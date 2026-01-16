@@ -6,18 +6,35 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 
 ## Phase Overview
 
-| Phase | Focus | Deliverable |
-|-------|-------|-------------|
-| **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent |
-| **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments |
-| **Phase 3** | Observability | Metrics, logs, dashboard v1 |
-| **Phase 4** | Resilience | Chaos testing + FMEA |
-| **Phase 5** | Intelligence | Full agent + knowledge base |
-| **Phase 6** | Scale | More templates + cloud deploy |
+| Phase | Focus | Deliverable | Status |
+|-------|-------|-------------|--------|
+| **Phase 0** | Specification | Product spec, agent spec, timeline | ✅ Complete |
+| **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | 🚧 In Progress |
+| **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ⏳ Planned |
+| **Phase 3** | Observability | Metrics, logs, dashboard v1 | ⏳ Planned |
+| **Phase 4** | Resilience | Chaos testing + FMEA | ⏳ Planned |
+| **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
+| **Phase 6** | Scale | More templates + cloud deploy | ⏳ Planned |
 
 ---
 
-## Phase 1: MVP (Start Here)
+## Phase 0: Specification ✅
+
+**Goal:** Define the product vision, technical architecture, and development roadmap.
+
+### 0.1 Documentation
+- [x] Product specification ([product.md](./product.md))
+- [x] Agent specification ([agent.md](./agent.md))
+- [x] Development timeline ([timeline.md](./timeline.md))
+- [x] README with project overview
+
+### 0.2 Project Setup
+- [x] Repository initialization
+- [x] Versioning strategy (CHANGELOG.md)
+
+---
+
+## Phase 1: MVP (In Progress)
 
 **Goal:** Developer can scaffold a project, run it locally, and ask the agent basic questions.
 

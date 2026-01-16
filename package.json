@@ -1,0 +1,37 @@
+{
+  "name": "blissful-infra",
+  "version": "0.1.0",
+  "description": "Infrastructure that thinks for itself. Ship fast. Break nothing. Learn everything.",
+  "keywords": [
+    "infrastructure",
+    "devops",
+    "cli",
+    "kubernetes",
+    "docker",
+    "ci-cd",
+    "chaos-engineering",
+    "llm",
+    "ai"
+  ],
+  "homepage": "https://github.com/you/blissful-infra#readme",
+  "bugs": {
+    "url": "https://github.com/you/blissful-infra/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/you/blissful-infra.git"
+  },
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo 'No build configured yet'",
+    "test": "echo 'No tests configured yet'"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
