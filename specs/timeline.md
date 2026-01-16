@@ -39,14 +39,16 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 **Goal:** Developer can scaffold a project, run it locally, and ask the agent basic questions.
 
 ### 1.1 CLI Foundation
-- [ ] Project scaffolding with `blissful-infra create`
-- [ ] Interactive prompts (project name, template selection)
-- [ ] `blissful-infra up` - start local environment
-- [ ] `blissful-infra down` - stop local environment
-- [ ] `blissful-infra logs` - tail local logs
-- [ ] Configuration file parsing (`blissful-infra.yaml`)
+- [x] Project scaffolding with `blissful-infra create`
+- [x] Interactive prompts (project name, template selection)
+- [x] `blissful-infra up` - start local environment
+- [x] `blissful-infra down` - stop local environment
+- [x] `blissful-infra logs` - tail local logs
+- [x] Configuration file parsing (`blissful-infra.yaml`)
 
-**Tech:** Node.js + TypeScript, Commander.js or Inquirer for prompts
+**Tech:** Node.js + TypeScript, Commander.js + Inquirer
+
+**Location:** `packages/cli/`
 
 ### 1.2 First Template (Spring Boot)
 - [ ] Kotlin + Spring Boot hello world
@@ -59,12 +61,12 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 **Why Spring Boot first:** Most complex template, proves the pattern works. Others will be easier.
 
 ### 1.3 Local Infrastructure
-- [ ] Docker Compose with:
+- [x] Docker Compose generation with:
   - Application container
   - Kafka (single broker, KRaft mode - no Zookeeper)
   - Redis (optional, based on user selection)
   - PostgreSQL (optional, based on user selection)
-- [ ] Health check orchestration (wait for dependencies)
+- [x] Health check orchestration (wait for dependencies)
 - [ ] Port management and conflict detection
 
 ### 1.4 Basic Agent

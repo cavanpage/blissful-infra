@@ -1,0 +1,45 @@
+{
+  "name": "@blissful-infra/cli",
+  "version": "0.1.0",
+  "description": "CLI for blissful-infra - infrastructure that thinks for itself",
+  "type": "module",
+  "bin": {
+    "blissful-infra": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cli",
+    "infrastructure",
+    "devops",
+    "docker",
+    "kubernetes"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "execa": "^9.5.2",
+    "inquirer": "^12.3.2",
+    "ora": "^8.1.1"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
+}
