@@ -8,7 +8,7 @@ Infrastructure that thinks for itself.
 
 ---
 
-[Product Spec](./specs/product.md) · [Agent Spec](./specs/agent.md) · [Get Started](#quick-start)
+[Product Spec](./specs/product.md) · [Agent Spec](./specs/agent.md) · [Timeline](./specs/timeline.md) · [Get Started](#quick-start)
 
 ---
 
@@ -139,6 +139,7 @@ This project is built from two specifications:
 |------|-------------|
 | **[Product Spec](./specs/product.md)** | CLI, templates, pipeline, chaos testing, version comparison |
 | **[Agent Spec](./specs/agent.md)** | Local LLM integration, root cause analysis, self-learning knowledge base |
+| **[Timeline](./specs/timeline.md)** | Phased development plan, MVP-first approach |
 
 ## Philosophy
 
