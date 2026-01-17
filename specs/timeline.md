@@ -51,14 +51,16 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 **Location:** `packages/cli/`
 
 ### 1.2 First Template (Spring Boot)
-- [ ] Kotlin + Spring Boot hello world
-- [ ] Standard endpoints (`/health`, `/hello`, `/hello/:name`, `/echo`)
-- [ ] Dockerfile (multi-stage build)
-- [ ] Docker Compose for local orchestration
-- [ ] Basic unit tests (JUnit 5 + MockK)
-- [ ] Structured JSON logging
+- [x] Kotlin + Spring Boot hello world
+- [x] Standard endpoints (`/health`, `/hello`, `/hello/:name`, `/echo`, `/ready`, `/live`)
+- [x] Dockerfile (multi-stage build)
+- [x] Docker Compose for local orchestration
+- [x] Basic unit tests (JUnit 5 + MockK)
+- [x] Structured JSON logging (logstash-logback-encoder)
+- [x] Kafka producer/consumer with WebSocket bridge
+- [x] Template variable substitution (`{{PROJECT_NAME}}`)
 
-**Why Spring Boot first:** Most complex template, proves the pattern works. Others will be easier.
+**Location:** `packages/cli/templates/spring-boot/`
 
 ### 1.3 Local Infrastructure
 - [x] Docker Compose generation with:
