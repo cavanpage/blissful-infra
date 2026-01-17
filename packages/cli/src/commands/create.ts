@@ -4,9 +4,7 @@ import chalk from "chalk";
 import ora from "ora";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { copyTemplate, getAvailableTemplates } from "../utils/template.js";
 
 interface ProjectOptions {
   name: string;
@@ -46,10 +44,26 @@ const DEPLOY_TARGETS = [
   { name: "cloud", description: "EKS/GKE/AKS" },
 ] as const;
 
+interface CommandOptions {
+  template?: string;
+  database?: string;
+  deploy?: string;
+}
+
 async function promptForOptions(
   providedName?: string,
-  providedTemplate?: string
+  opts?: CommandOptions
 ): Promise<ProjectOptions> {
+  // If all options provided via CLI, skip prompts
+  if (providedName && opts?.template && opts?.database && opts?.deploy) {
+    return {
+      name: providedName,
+      template: opts.template,
+      database: opts.database,
+      deployTarget: opts.deploy,
+    };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const questions: any[] = [];
 
@@ -68,7 +82,7 @@ async function promptForOptions(
     });
   }
 
-  if (!providedTemplate) {
+  if (!opts?.template) {
     questions.push({
       type: "list",
       name: "template",
@@ -80,8 +94,8 @@ async function promptForOptions(
     });
   }
 
-  questions.push(
-    {
+  if (!opts?.database) {
+    questions.push({
       type: "list",
       name: "database",
       message: "Include database?",
@@ -89,8 +103,11 @@ async function promptForOptions(
         name: `${d.name.padEnd(15)} ${chalk.dim(`(${d.description})`)}`,
         value: d.name,
       })),
-    },
-    {
+    });
+  }
+
+  if (!opts?.deploy) {
+    questions.push({
       type: "list",
       name: "deployTarget",
       message: "Deployment target:",
@@ -98,16 +115,16 @@ async function promptForOptions(
         name: `${t.name.padEnd(15)} ${chalk.dim(`(${t.description})`)}`,
         value: t.name,
       })),
-    }
-  );
+    });
+  }
 
-  const answers = await inquirer.prompt(questions);
+  const answers = questions.length > 0 ? await inquirer.prompt(questions) : {};
 
   return {
     name: providedName || answers.name,
-    template: providedTemplate || answers.template,
-    database: answers.database,
-    deployTarget: answers.deployTarget,
+    template: opts?.template || answers.template,
+    database: opts?.database || answers.database,
+    deployTarget: opts?.deploy || answers.deployTarget,
   };
 }
 
@@ -128,22 +145,32 @@ async function scaffoldProject(options: ProjectOptions): Promise<void> {
   // Create project directory
   await fs.mkdir(projectDir, { recursive: true });
 
-  // Create blissful-infra.yaml config
-  const config = {
-    name: options.name,
-    template: options.template,
-    database: options.database,
-    deployTarget: options.deployTarget,
-    version: "0.1.0",
-  };
+  // Copy template files
+  const availableTemplates = getAvailableTemplates();
+  if (availableTemplates.includes(options.template)) {
+    spinner.text = `Copying ${options.template} template...`;
+    await copyTemplate(options.template, projectDir, {
+      projectName: options.name,
+      database: options.database,
+      deployTarget: options.deployTarget,
+    });
+  } else {
+    // Template not yet implemented, create placeholder
+    await fs.mkdir(path.join(projectDir, "src"), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDir, "src", ".gitkeep"),
+      `# Template '${options.template}' coming soon\n`
+    );
+  }
 
+  // Create blissful-infra.yaml config
   await fs.writeFile(
     path.join(projectDir, "blissful-infra.yaml"),
     `# Blissful Infra Configuration
-name: ${config.name}
-template: ${config.template}
-database: ${config.database}
-deploy_target: ${config.deployTarget}
+name: ${options.name}
+template: ${options.template}
+database: ${options.database}
+deploy_target: ${options.deployTarget}
 
 # Agent configuration (Phase 1.4)
 # agent:
@@ -153,11 +180,7 @@ deploy_target: ${config.deployTarget}
 `
   );
 
-  // Create placeholder directories
-  await fs.mkdir(path.join(projectDir, "src"), { recursive: true });
-  await fs.mkdir(path.join(projectDir, "infra"), { recursive: true });
-
-  // Create a basic README
+  // Create README
   await fs.writeFile(
     path.join(projectDir, "README.md"),
     `# ${options.name}
@@ -175,6 +198,11 @@ blissful-infra logs
 
 # Stop environment
 blissful-infra down
+
+# Test the API
+curl http://localhost:8080/health
+curl http://localhost:8080/hello
+curl http://localhost:8080/hello/YourName
 \`\`\`
 
 ## Configuration
@@ -186,14 +214,19 @@ See \`blissful-infra.yaml\` for project settings.
 - **Template:** ${options.template}
 - **Database:** ${options.database}
 - **Deploy Target:** ${options.deployTarget}
-`
-  );
 
-  // TODO: Copy actual template files based on options.template
-  // For now, create a placeholder note
-  await fs.writeFile(
-    path.join(projectDir, "src", ".gitkeep"),
-    "# Template files will be generated here\n"
+## Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| \`/health\` | GET | Health check |
+| \`/ready\` | GET | Kubernetes readiness probe |
+| \`/live\` | GET | Kubernetes liveness probe |
+| \`/hello\` | GET | Returns "Hello, World!" |
+| \`/hello/:name\` | GET | Returns personalized greeting |
+| \`/echo\` | POST | Echoes request body |
+| \`/ws/events\` | WS | WebSocket for real-time events |
+`
   );
 
   spinner.succeed(`Scaffolded project in ./${options.name}`);
@@ -209,8 +242,10 @@ See \`blissful-infra.yaml\` for project settings.
 export const createCommand = new Command("create")
   .description("Create a new blissful-infra project")
   .argument("[name]", "Project name")
-  .option("-t, --template <template>", "Template to use")
-  .action(async (name?: string, opts?: { template?: string }) => {
+  .option("-t, --template <template>", "Template to use (spring-boot, fastapi, express, go-chi, react-vite, fullstack)")
+  .option("-d, --database <database>", "Database to include (none, postgres, redis, postgres-redis)")
+  .option("--deploy <target>", "Deployment target (local-only, kubernetes, cloud)")
+  .action(async (name?: string, opts?: CommandOptions) => {
     console.log();
     console.log(
       chalk.bold("⚡ blissful-infra"),
@@ -230,6 +265,30 @@ export const createCommand = new Command("create")
       }
     }
 
-    const options = await promptForOptions(name, opts?.template);
+    // Validate database if provided
+    if (opts?.database) {
+      const validDatabases = DATABASES.map((d) => d.name);
+      if (!validDatabases.includes(opts.database as (typeof DATABASES)[number]["name"])) {
+        console.error(
+          chalk.red(`Invalid database: ${opts.database}`),
+          chalk.dim(`\nValid databases: ${validDatabases.join(", ")}`)
+        );
+        process.exit(1);
+      }
+    }
+
+    // Validate deploy target if provided
+    if (opts?.deploy) {
+      const validTargets = DEPLOY_TARGETS.map((t) => t.name);
+      if (!validTargets.includes(opts.deploy as (typeof DEPLOY_TARGETS)[number]["name"])) {
+        console.error(
+          chalk.red(`Invalid deploy target: ${opts.deploy}`),
+          chalk.dim(`\nValid targets: ${validTargets.join(", ")}`)
+        );
+        process.exit(1);
+      }
+    }
+
+    const options = await promptForOptions(name, opts);
     await scaffoldProject(options);
   });
