@@ -76,25 +76,27 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
   services.kafka = {
     image: "apache/kafka:3.7.0",
     container_name: `${config.name}-kafka`,
-    ports: ["9092:9092"],
+    hostname: "kafka",
+    ports: ["9092:9092", "9094:9094"],
     environment: {
       KAFKA_NODE_ID: 1,
       KAFKA_PROCESS_ROLES: "broker,controller",
-      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093",
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092",
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093",
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092",
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9094,EXTERNAL://localhost:9092",
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093",
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP:
-        "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
+        "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT",
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER",
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT",
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1,
       CLUSTER_ID: "blissful-infra-kafka-cluster",
     },
     healthcheck: {
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"],
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9094 || exit 1"],
       interval: "10s",
-      timeout: "5s",
-      retries: 5,
+      timeout: "10s",
+      retries: 10,
+      start_period: "30s",
     },
   };
 
@@ -111,7 +113,7 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
       },
       volumes: [`${config.name}-postgres-data:/var/lib/postgresql/data`],
       healthcheck: {
-        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"],
+        test: ["CMD-SHELL", `pg_isready -U ${config.name.replace(/-/g, "_")}`],
         interval: "5s",
         timeout: "3s",
         retries: 5,
@@ -143,7 +145,7 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
     container_name: `${config.name}-app`,
     ports: ["8080:8080"],
     environment: {
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092",
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
       ...(config.database === "postgres" || config.database === "postgres-redis"
         ? {
             DATABASE_URL: `postgresql://${config.name.replace(/-/g, "_")}:localdev@postgres:5432/${config.name.replace(/-/g, "_")}`,
@@ -165,15 +167,15 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
   };
 
   // Build volumes object
-  const volumes: Record<string, unknown> = {};
+  const volumes: Record<string, string | null> = {};
   if (config.database === "postgres" || config.database === "postgres-redis") {
-    volumes[`${config.name}-postgres-data`] = {};
+    volumes[`${config.name}-postgres-data`] = null;
   }
 
-  const compose = {
-    services,
-    ...(Object.keys(volumes).length > 0 ? { volumes } : {}),
-  };
+  const compose: Record<string, unknown> = { services };
+  if (Object.keys(volumes).length > 0) {
+    compose.volumes = volumes;
+  }
 
   // Write docker-compose.yaml
   const yaml = generateYaml(compose);
@@ -183,7 +185,11 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
 function generateYaml(obj: unknown, indent = 0): string {
   const spaces = "  ".repeat(indent);
 
-  if (obj === null || obj === undefined) {
+  if (obj === null) {
+    return "";  // Empty value in YAML
+  }
+
+  if (obj === undefined) {
     return "null";
   }
 
