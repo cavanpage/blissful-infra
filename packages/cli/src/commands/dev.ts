@@ -171,13 +171,12 @@ async function startDockerDevMode(config: ProjectConfig): Promise<void> {
   console.log();
 
   const watcher = watch(watchPaths, {
+    cwd: process.cwd(),
     ignored: ignorePaths,
     persistent: true,
     ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 300,
-      pollInterval: 100,
-    },
+    usePolling: true,
+    interval: 1000,
   });
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -389,13 +388,12 @@ async function startLocalDevMode(config: ProjectConfig): Promise<void> {
   console.log();
 
   const watcher = watch(watchPaths, {
+    cwd: process.cwd(),
     ignored: ignorePaths,
     persistent: true,
     ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 300,
-      pollInterval: 100,
-    },
+    usePolling: true,
+    interval: 1000,
   });
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
