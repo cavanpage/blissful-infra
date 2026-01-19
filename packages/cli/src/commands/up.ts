@@ -46,8 +46,18 @@ async function startEnvironment(config: ProjectConfig): Promise<void> {
     console.log();
     console.log(chalk.green("Services running:"));
 
+    const isFrontendOnly = config.type === "frontend";
+    const isFullstack = config.type === "fullstack";
+
     // Show expected services based on config
-    console.log(chalk.dim("  • Application: ") + chalk.cyan("http://localhost:8080"));
+    if (isFrontendOnly) {
+      console.log(chalk.dim("  • Frontend:    ") + chalk.cyan("http://localhost:3000"));
+    } else if (isFullstack) {
+      console.log(chalk.dim("  • Frontend:    ") + chalk.cyan("http://localhost:3000"));
+      console.log(chalk.dim("  • Backend:     ") + chalk.cyan("http://localhost:8080"));
+    } else {
+      console.log(chalk.dim("  • Application: ") + chalk.cyan("http://localhost:8080"));
+    }
 
     if (config.database === "postgres" || config.database === "postgres-redis") {
       console.log(chalk.dim("  • PostgreSQL:  ") + chalk.cyan("localhost:5432"));
@@ -57,7 +67,9 @@ async function startEnvironment(config: ProjectConfig): Promise<void> {
       console.log(chalk.dim("  • Redis:       ") + chalk.cyan("localhost:6379"));
     }
 
-    console.log(chalk.dim("  • Kafka:       ") + chalk.cyan("localhost:9092"));
+    if (!isFrontendOnly) {
+      console.log(chalk.dim("  • Kafka:       ") + chalk.cyan("localhost:9092"));
+    }
 
     console.log();
     console.log(chalk.dim("Run"), chalk.cyan("blissful-infra logs"), chalk.dim("to view logs"));
@@ -71,9 +83,12 @@ async function startEnvironment(config: ProjectConfig): Promise<void> {
 
 async function generateDockerCompose(config: ProjectConfig): Promise<void> {
   const services: Record<string, unknown> = {};
+  const isFrontendOnly = config.type === "frontend";
+  const isFullstack = config.type === "fullstack";
 
-  // Kafka service (KRaft mode - no Zookeeper)
-  services.kafka = {
+  // Kafka service (KRaft mode - no Zookeeper) - skip for frontend-only
+  if (!isFrontendOnly) {
+    services.kafka = {
     image: "apache/kafka:3.7.0",
     container_name: `${config.name}-kafka`,
     hostname: "kafka",
@@ -99,6 +114,7 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
       start_period: "30s",
     },
   };
+  }
 
   // PostgreSQL (if selected)
   if (config.database === "postgres" || config.database === "postgres-redis") {
@@ -136,35 +152,52 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
     };
   }
 
-  // Application placeholder
-  services.app = {
-    build: {
-      context: ".",
-      dockerfile: "Dockerfile",
-    },
-    container_name: `${config.name}-app`,
-    ports: ["8080:8080"],
-    environment: {
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
-      ...(config.database === "postgres" || config.database === "postgres-redis"
-        ? {
-            DATABASE_URL: `postgresql://${config.name.replace(/-/g, "_")}:localdev@postgres:5432/${config.name.replace(/-/g, "_")}`,
-          }
-        : {}),
-      ...(config.database === "redis" || config.database === "postgres-redis"
-        ? { REDIS_URL: "redis://redis:6379" }
-        : {}),
-    },
-    depends_on: {
-      kafka: { condition: "service_healthy" },
-      ...(config.database === "postgres" || config.database === "postgres-redis"
-        ? { postgres: { condition: "service_healthy" } }
-        : {}),
-      ...(config.database === "redis" || config.database === "postgres-redis"
-        ? { redis: { condition: "service_healthy" } }
-        : {}),
-    },
-  };
+  // Backend application service (for backend or fullstack templates)
+  if (!isFrontendOnly) {
+    services.app = {
+      build: {
+        context: isFullstack ? "./backend" : ".",
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${config.name}-app`,
+      ports: ["8080:8080"],
+      environment: {
+        KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
+        ...(config.database === "postgres" || config.database === "postgres-redis"
+          ? {
+              DATABASE_URL: `postgresql://${config.name.replace(/-/g, "_")}:localdev@postgres:5432/${config.name.replace(/-/g, "_")}`,
+            }
+          : {}),
+        ...(config.database === "redis" || config.database === "postgres-redis"
+          ? { REDIS_URL: "redis://redis:6379" }
+          : {}),
+      },
+      depends_on: {
+        kafka: { condition: "service_healthy" },
+        ...(config.database === "postgres" || config.database === "postgres-redis"
+          ? { postgres: { condition: "service_healthy" } }
+          : {}),
+        ...(config.database === "redis" || config.database === "postgres-redis"
+          ? { redis: { condition: "service_healthy" } }
+          : {}),
+      },
+    };
+  }
+
+  // Frontend service (for frontend-only or fullstack templates)
+  if (isFrontendOnly || isFullstack) {
+    services.frontend = {
+      build: {
+        context: isFullstack ? "./frontend" : ".",
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${config.name}-frontend`,
+      ports: ["3000:80"],
+      ...(isFullstack ? {
+        depends_on: ["app"],
+      } : {}),
+    };
+  }
 
   // Build volumes object
   const volumes: Record<string, string | null> = {};

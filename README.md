@@ -29,12 +29,10 @@ You're a software engineer with an idea. You want to test it. But first you need
 ## The Solution
 
 ```bash
-npx blissful-infra create my-idea --template spring-boot
-cd my-idea
-blissful-infra up
+npx blissful-infra start my-idea
 ```
 
-That's it. You now have:
+That's it. One command. You now have:
 
 - ✅ Working hello world with test endpoints
 - ✅ Kafka event streaming + WebSockets
@@ -152,25 +150,75 @@ Manage different versions of the infrastructure using tags and branches. Allow e
 
 ## Quick Start
 
+### One Command Fullstack
+
 ```bash
 # Install
 npm install -g blissful-infra
 
-# Create a project
-blissful-infra create my-service --template spring-boot
+# Create and run a fullstack app (Spring Boot + React)
+blissful-infra start my-app
 
-# Run locally
-cd my-service
-blissful-infra up
-
-# See it work
-curl http://localhost:8080/hello/world
-
-# Open the dashboard
-blissful-infra dashboard
+# That's it! Your app is running:
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:8080
 ```
 
-## Templates
+### Customize Your Stack
+
+```bash
+# Different backend
+blissful-infra start my-app --backend fastapi
+
+# Add a database
+blissful-infra start my-app --database postgres
+
+# All options
+blissful-infra start my-app \
+  --backend spring-boot \
+  --frontend react-vite \
+  --database postgres-redis
+```
+
+### Step-by-Step (Advanced)
+
+```bash
+# Create project without running
+blissful-infra create my-app --template fullstack
+
+# Start later
+cd my-app
+blissful-infra up
+```
+
+### Development Mode (Hot Reload)
+
+```bash
+cd my-app
+
+# Watch for changes and auto-rebuild in Docker
+blissful-infra dev
+
+# Or run locally (requires matching JDK)
+blissful-infra dev --local
+```
+
+### Other Commands
+
+```bash
+blissful-infra logs      # View container logs
+blissful-infra down      # Stop everything
+```
+
+## Project Types
+
+| Type | Description |
+|------|-------------|
+| `fullstack` | Backend + Frontend monorepo with API proxy |
+| `backend` | Backend API only |
+| `frontend` | Frontend static site only |
+
+## Backend Templates
 
 | Template | Stack |
 |----------|-------|
@@ -178,8 +226,42 @@ blissful-infra dashboard
 | `fastapi` | Python + FastAPI + Kafka + WebSockets |
 | `express` | Node + Express + TypeScript + Kafka + WebSockets |
 | `go-chi` | Go + Chi + Kafka + WebSockets |
-| `react-vite` | React + Vite + TypeScript + Redux + shadcn/ui |
-| `fullstack` | Backend + Frontend monorepo |
+
+## Frontend Templates
+
+| Template | Stack |
+|----------|-------|
+| `react-vite` | React + Vite + TypeScript + TailwindCSS + React Query |
+| `nextjs` | Next.js + TypeScript + TailwindCSS |
+
+## Fullstack Architecture
+
+When you create a fullstack project, you get:
+
+```
+my-app/
+├── backend/           # Spring Boot / FastAPI / Express / Go
+│   ├── src/
+│   ├── Dockerfile
+│   └── build.gradle.kts
+├── frontend/          # React + Vite
+│   ├── src/
+│   ├── Dockerfile
+│   └── package.json
+├── docker-compose.yaml
+└── blissful-infra.yaml
+```
+
+**Communication Flow:**
+- Frontend calls `/api/*` → nginx proxies to backend
+- Backend broadcasts events via WebSocket at `/ws/events`
+- Frontend receives real-time updates via WebSocket hook
+
+**Services:**
+- Frontend: `http://localhost:3000` (nginx serving React)
+- Backend: `http://localhost:8080` (Spring Boot API)
+- Kafka: `localhost:9092` (event streaming)
+- PostgreSQL: `localhost:5432` (if database selected)
 
 ## Specs
 

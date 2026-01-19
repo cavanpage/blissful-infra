@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { createCommand } from "./commands/create.js";
+import { startCommand } from "./commands/start.js";
 import { upCommand } from "./commands/up.js";
 import { downCommand } from "./commands/down.js";
 import { logsCommand } from "./commands/logs.js";
@@ -14,6 +15,7 @@ program
   .description("Infrastructure that thinks for itself")
   .version("0.1.0");
 
+program.addCommand(startCommand);
 program.addCommand(createCommand);
 program.addCommand(upCommand);
 program.addCommand(downCommand);
