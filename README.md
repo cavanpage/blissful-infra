@@ -284,24 +284,30 @@ When working on templates, use `--link` mode to symlink templates instead of cop
 git clone https://github.com/cavanpage/blissful-infra.git
 cd blissful-infra
 
-# Install dependencies
+# Install dependencies and build
 npm install
-
-# Build the CLI
 cd packages/cli
 npm run build
 
 # Create a test project with linked templates
 node dist/index.js start test-app --link
+```
 
-# Now edit templates directly:
-# packages/cli/templates/spring-boot/  → test-app/backend/
-# packages/cli/templates/react-vite/   → test-app/frontend/
+The symlinks mean:
+- `test-app/backend/` → `packages/cli/templates/spring-boot/`
+- `test-app/frontend/` → `packages/cli/templates/react-vite/`
 
-# Changes to templates are immediately reflected in test-app/
-# Rebuild containers to see your changes:
-cd test-app
-docker compose up --build
+**Edit templates, rebuild, and test - all from the repo root:**
+
+```bash
+# Edit templates directly in the repo
+vim packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HelloController.kt
+
+# Rebuild to see changes (from repo root)
+docker compose -f test-app/docker-compose.yaml up --build app
+
+# View logs
+docker compose -f test-app/docker-compose.yaml logs -f
 ```
 
 **Note:** In link mode, template variables (like `{{PROJECT_NAME}}`) won't be substituted since files are symlinked rather than copied. Use link mode for developing template structure and code, then test with a normal `start` (without `--link`) to verify variable substitution works correctly.
@@ -309,10 +315,8 @@ docker compose up --build
 ### Cleanup
 
 ```bash
-# Stop containers
-blissful-infra down test-app
-
-# Remove test project
+# Stop and remove (from repo root)
+docker compose -f test-app/docker-compose.yaml down
 rm -rf test-app
 ```
 
