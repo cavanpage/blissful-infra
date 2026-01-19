@@ -273,6 +273,49 @@ This project is built from two specifications:
 | **[Agent Spec](./specs/agent.md)** | Local LLM integration, root cause analysis, self-learning knowledge base |
 | **[Timeline](./specs/timeline.md)** | Phased development plan, MVP-first approach |
 
+## Contributing
+
+### Template Development
+
+When working on templates, use `--link` mode to symlink templates instead of copying them. This allows you to edit templates directly and see changes immediately:
+
+```bash
+# Clone the repo
+git clone https://github.com/cavanpage/blissful-infra.git
+cd blissful-infra
+
+# Install dependencies
+npm install
+
+# Build the CLI
+cd packages/cli
+npm run build
+
+# Create a test project with linked templates
+node dist/index.js start test-app --link
+
+# Now edit templates directly:
+# packages/cli/templates/spring-boot/  → test-app/backend/
+# packages/cli/templates/react-vite/   → test-app/frontend/
+
+# Changes to templates are immediately reflected in test-app/
+# Rebuild containers to see your changes:
+cd test-app
+docker compose up --build
+```
+
+**Note:** In link mode, template variables (like `{{PROJECT_NAME}}`) won't be substituted since files are symlinked rather than copied. Use link mode for developing template structure and code, then test with a normal `start` (without `--link`) to verify variable substitution works correctly.
+
+### Cleanup
+
+```bash
+# Stop containers
+blissful-infra down test-app
+
+# Remove test project
+rm -rf test-app
+```
+
 ## Philosophy
 
 1. **Iterate on ideas, not infrastructure** — The infra should disappear.

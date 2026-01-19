@@ -3,24 +3,47 @@ import chalk from "chalk";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig } from "../utils/config.js";
+
+async function findProjectDir(name?: string): Promise<string | null> {
+  if (name) {
+    const projectDir = path.join(process.cwd(), name);
+    try {
+      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
+      return projectDir;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
+    return process.cwd();
+  } catch {
+    return null;
+  }
+}
 
 export const logsCommand = new Command("logs")
   .description("View logs from the local environment")
+  .argument("[name]", "Project name (if running from parent directory)")
   .option("-f, --follow", "Follow log output", false)
   .option("-n, --tail <lines>", "Number of lines to show", "100")
   .option("-s, --service <name>", "Show logs for specific service")
-  .action(async (opts: { follow: boolean; tail: string; service?: string }) => {
-    // Check for config
-    const config = await loadConfig();
-    if (!config) {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Are you in a blissful-infra project directory?"));
+  .action(async (name: string | undefined, opts: { follow: boolean; tail: string; service?: string }) => {
+    const projectDir = await findProjectDir(name);
+
+    if (!projectDir) {
+      if (name) {
+        console.error(chalk.red(`Project '${name}' not found.`));
+      } else {
+        console.error(chalk.red("No blissful-infra.yaml found."));
+        console.error(chalk.dim("Run from project directory or specify project name:"));
+        console.error(chalk.cyan("  blissful-infra logs my-app"));
+      }
       process.exit(1);
     }
 
-    // Check for docker-compose.yaml
-    const composeFile = path.join(process.cwd(), "docker-compose.yaml");
+    const composeFile = path.join(projectDir, "docker-compose.yaml");
     try {
       await fs.access(composeFile);
     } catch {
@@ -40,9 +63,8 @@ export const logsCommand = new Command("logs")
     }
 
     try {
-      await execa("docker", args, { stdio: "inherit" });
+      await execa("docker", args, { cwd: projectDir, stdio: "inherit" });
     } catch (error) {
-      // User may have pressed Ctrl+C, that's fine
       const execaError = error as { signal?: string };
       if (execaError.signal !== "SIGINT") {
         throw error;
