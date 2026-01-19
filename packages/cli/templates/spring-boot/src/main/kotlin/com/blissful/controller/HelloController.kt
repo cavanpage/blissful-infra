@@ -2,6 +2,7 @@ package com.blissful.controller
 
 import com.blissful.event.EventPublisher
 import com.blissful.event.GreetingEvent
+import com.blissful.websocket.EventWebSocketHandler
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -20,7 +21,8 @@ data class EchoResponse(
 
 @RestController
 class HelloController(
-    private val eventPublisher: EventPublisher
+    private val eventPublisher: EventPublisher,
+    private val webSocketHandler: EventWebSocketHandler
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -34,6 +36,9 @@ class HelloController(
         )
         eventPublisher.publish(event)
 
+        // Notify WebSocket clients
+        webSocketHandler.broadcast("greeting", mapOf("name" to "World", "message" to "Hello, World!"))
+
         return HelloResponse(message = "Hello, World!")
     }
 
@@ -46,6 +51,9 @@ class HelloController(
             name = name
         )
         eventPublisher.publish(event)
+
+        // Notify WebSocket clients
+        webSocketHandler.broadcast("greeting", mapOf("name" to name, "message" to "Hello, $name!"))
 
         return HelloResponse(message = "Hello, $name!")
     }

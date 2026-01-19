@@ -3,7 +3,9 @@ import path from "node:path";
 
 export interface ProjectConfig {
   name: string;
-  template: string;
+  type: string;
+  backend?: string;
+  frontend?: string;
   database: string;
   deployTarget: string;
 }
@@ -38,7 +40,9 @@ function parseYaml(content: string): ProjectConfig {
 
   return {
     name: config.name || "unnamed",
-    template: config.template || "spring-boot",
+    type: config.type || "backend",
+    backend: config.backend,
+    frontend: config.frontend,
     database: config.database || "none",
     deployTarget: config.deploy_target || "local-only",
   };

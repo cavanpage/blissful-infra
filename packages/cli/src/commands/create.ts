@@ -9,11 +9,13 @@ import { copyTemplate, getAvailableTemplates } from "../utils/template.js";
 interface ProjectOptions {
   name: string;
   template: string;
+  backend?: string;
+  frontend?: string;
   database: string;
   deployTarget: string;
 }
 
-const TEMPLATES = [
+const BACKEND_TEMPLATES = [
   {
     name: "spring-boot",
     description: "Kotlin + Spring Boot + Kafka + WebSockets",
@@ -24,11 +26,27 @@ const TEMPLATES = [
     description: "Node + Express + TypeScript + Kafka + WebSockets",
   },
   { name: "go-chi", description: "Go + Chi router + Kafka + WebSockets" },
+] as const;
+
+const FRONTEND_TEMPLATES = [
   {
     name: "react-vite",
-    description: "React + Vite + TypeScript + Redux + shadcn/ui",
+    description: "React + Vite + TypeScript + TailwindCSS",
   },
+  {
+    name: "nextjs",
+    description: "Next.js + TypeScript + TailwindCSS",
+  },
+  {
+    name: "none",
+    description: "No frontend",
+  },
+] as const;
+
+const PROJECT_TYPES = [
   { name: "fullstack", description: "Backend + Frontend monorepo" },
+  { name: "backend", description: "Backend API only" },
+  { name: "frontend", description: "Frontend only (static site)" },
 ] as const;
 
 const DATABASES = [
@@ -46,6 +64,8 @@ const DEPLOY_TARGETS = [
 
 interface CommandOptions {
   template?: string;
+  backend?: string;
+  frontend?: string;
   database?: string;
   deploy?: string;
 }
@@ -54,25 +74,17 @@ async function promptForOptions(
   providedName?: string,
   opts?: CommandOptions
 ): Promise<ProjectOptions> {
-  // If all options provided via CLI, skip prompts
-  if (providedName && opts?.template && opts?.database && opts?.deploy) {
-    return {
-      name: providedName,
-      template: opts.template,
-      database: opts.database,
-      deployTarget: opts.deploy,
-    };
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const questions: any[] = [];
+  const answers: Record<string, string> = {};
 
+  // Project name
   if (!providedName) {
     questions.push({
       type: "input",
       name: "name",
       message: "Project name:",
-      default: "my-service",
+      default: "my-app",
       validate: (input: string) => {
         if (!input.trim()) return "Project name is required";
         if (!/^[a-z0-9-]+$/.test(input))
@@ -82,20 +94,61 @@ async function promptForOptions(
     });
   }
 
+  // Project type
   if (!opts?.template) {
     questions.push({
       type: "list",
       name: "template",
-      message: "Select template:",
-      choices: TEMPLATES.map((t) => ({
+      message: "Project type:",
+      choices: PROJECT_TYPES.map((t) => ({
         name: `${t.name.padEnd(12)} ${chalk.dim(`(${t.description})`)}`,
         value: t.name,
       })),
     });
   }
 
-  if (!opts?.database) {
-    questions.push({
+  // Get initial answers to determine follow-up questions
+  if (questions.length > 0) {
+    Object.assign(answers, await inquirer.prompt(questions));
+  }
+
+  const projectType = opts?.template || answers.template;
+
+  // Backend selection (for fullstack or backend-only)
+  if (projectType !== "frontend" && !opts?.backend) {
+    const backendAnswer = await inquirer.prompt([{
+      type: "list",
+      name: "backend",
+      message: "Select backend framework:",
+      choices: BACKEND_TEMPLATES.map((t) => ({
+        name: `${t.name.padEnd(12)} ${chalk.dim(`(${t.description})`)}`,
+        value: t.name,
+      })),
+    }]);
+    answers.backend = backendAnswer.backend;
+  }
+
+  // Frontend selection (for fullstack or frontend-only)
+  if (projectType !== "backend" && !opts?.frontend) {
+    const frontendChoices = projectType === "frontend"
+      ? FRONTEND_TEMPLATES.filter(t => t.name !== "none")
+      : FRONTEND_TEMPLATES;
+
+    const frontendAnswer = await inquirer.prompt([{
+      type: "list",
+      name: "frontend",
+      message: "Select frontend framework:",
+      choices: frontendChoices.map((t) => ({
+        name: `${t.name.padEnd(12)} ${chalk.dim(`(${t.description})`)}`,
+        value: t.name,
+      })),
+    }]);
+    answers.frontend = frontendAnswer.frontend;
+  }
+
+  // Database selection (skip for frontend-only)
+  if (projectType !== "frontend" && !opts?.database) {
+    const dbAnswer = await inquirer.prompt([{
       type: "list",
       name: "database",
       message: "Include database?",
@@ -103,11 +156,13 @@ async function promptForOptions(
         name: `${d.name.padEnd(15)} ${chalk.dim(`(${d.description})`)}`,
         value: d.name,
       })),
-    });
+    }]);
+    answers.database = dbAnswer.database;
   }
 
+  // Deploy target
   if (!opts?.deploy) {
-    questions.push({
+    const deployAnswer = await inquirer.prompt([{
       type: "list",
       name: "deployTarget",
       message: "Deployment target:",
@@ -115,15 +170,16 @@ async function promptForOptions(
         name: `${t.name.padEnd(15)} ${chalk.dim(`(${t.description})`)}`,
         value: t.name,
       })),
-    });
+    }]);
+    answers.deployTarget = deployAnswer.deployTarget;
   }
-
-  const answers = questions.length > 0 ? await inquirer.prompt(questions) : {};
 
   return {
     name: providedName || answers.name,
-    template: opts?.template || answers.template,
-    database: opts?.database || answers.database,
+    template: projectType,
+    backend: opts?.backend || answers.backend,
+    frontend: opts?.frontend || answers.frontend,
+    database: projectType === "frontend" ? "none" : (opts?.database || answers.database),
     deployTarget: opts?.deploy || answers.deployTarget,
   };
 }
@@ -145,89 +201,125 @@ async function scaffoldProject(options: ProjectOptions): Promise<void> {
   // Create project directory
   await fs.mkdir(projectDir, { recursive: true });
 
-  // Copy template files
   const availableTemplates = getAvailableTemplates();
-  if (availableTemplates.includes(options.template)) {
-    spinner.text = `Copying ${options.template} template...`;
-    await copyTemplate(options.template, projectDir, {
-      projectName: options.name,
-      database: options.database,
-      deployTarget: options.deployTarget,
-    });
-  } else {
-    // Template not yet implemented, create placeholder
-    await fs.mkdir(path.join(projectDir, "src"), { recursive: true });
-    await fs.writeFile(
-      path.join(projectDir, "src", ".gitkeep"),
-      `# Template '${options.template}' coming soon\n`
-    );
+  const isFullstack = options.template === "fullstack";
+  const isBackendOnly = options.template === "backend";
+  const isFrontendOnly = options.template === "frontend";
+
+  // Copy backend template
+  if ((isFullstack || isBackendOnly) && options.backend) {
+    const backendDir = isFullstack ? path.join(projectDir, "backend") : projectDir;
+
+    if (isFullstack) {
+      await fs.mkdir(backendDir, { recursive: true });
+    }
+
+    if (availableTemplates.includes(options.backend)) {
+      spinner.text = `Copying ${options.backend} backend template...`;
+      await copyTemplate(options.backend, backendDir, {
+        projectName: options.name,
+        database: options.database,
+        deployTarget: options.deployTarget,
+      });
+    } else {
+      await fs.mkdir(path.join(backendDir, "src"), { recursive: true });
+      await fs.writeFile(
+        path.join(backendDir, "src", ".gitkeep"),
+        `# Backend template '${options.backend}' coming soon\n`
+      );
+    }
+  }
+
+  // Copy frontend template
+  if ((isFullstack || isFrontendOnly) && options.frontend && options.frontend !== "none") {
+    const frontendDir = isFullstack ? path.join(projectDir, "frontend") : projectDir;
+
+    if (isFullstack) {
+      await fs.mkdir(frontendDir, { recursive: true });
+    }
+
+    if (availableTemplates.includes(options.frontend)) {
+      spinner.text = `Copying ${options.frontend} frontend template...`;
+      await copyTemplate(options.frontend, frontendDir, {
+        projectName: options.name,
+        database: options.database,
+        deployTarget: options.deployTarget,
+      });
+    } else {
+      await fs.mkdir(path.join(frontendDir, "src"), { recursive: true });
+      await fs.writeFile(
+        path.join(frontendDir, "src", ".gitkeep"),
+        `# Frontend template '${options.frontend}' coming soon\n`
+      );
+    }
   }
 
   // Create blissful-infra.yaml config
+  const configLines = [
+    "# Blissful Infra Configuration",
+    `name: ${options.name}`,
+    `type: ${options.template}`,
+  ];
+
+  if (options.backend) {
+    configLines.push(`backend: ${options.backend}`);
+  }
+  if (options.frontend && options.frontend !== "none") {
+    configLines.push(`frontend: ${options.frontend}`);
+  }
+
+  configLines.push(
+    `database: ${options.database}`,
+    `deploy_target: ${options.deployTarget}`,
+    "",
+    "# Agent configuration (Phase 1.4)",
+    "# agent:",
+    "#   provider: ollama",
+    "#   model: llama3.1:8b",
+    "#   endpoint: http://localhost:11434",
+  );
+
   await fs.writeFile(
     path.join(projectDir, "blissful-infra.yaml"),
-    `# Blissful Infra Configuration
-name: ${options.name}
-template: ${options.template}
-database: ${options.database}
-deploy_target: ${options.deployTarget}
-
-# Agent configuration (Phase 1.4)
-# agent:
-#   provider: ollama
-#   model: llama3.1:8b
-#   endpoint: http://localhost:11434
-`
+    configLines.join("\n") + "\n"
   );
 
-  // Create README
-  await fs.writeFile(
-    path.join(projectDir, "README.md"),
-    `# ${options.name}
+  // Create appropriate README based on project type
+  const readmeContent = generateReadme(options);
+  await fs.writeFile(path.join(projectDir, "README.md"), readmeContent);
 
-Generated with [blissful-infra](https://github.com/you/blissful-infra).
+  // Create root .gitignore for fullstack projects
+  if (isFullstack) {
+    await fs.writeFile(
+      path.join(projectDir, ".gitignore"),
+      `# Dependencies
+node_modules/
 
-## Quick Start
+# Build outputs
+dist/
+build/
+.gradle/
+target/
 
-\`\`\`bash
-# Start local environment
-blissful-infra up
+# IDE
+.idea/
+.vscode/
+*.iml
 
-# View logs
-blissful-infra logs
+# Environment
+.env
+.env.local
+.env.*.local
 
-# Stop environment
-blissful-infra down
+# OS
+.DS_Store
+Thumbs.db
 
-# Test the API
-curl http://localhost:8080/health
-curl http://localhost:8080/hello
-curl http://localhost:8080/hello/YourName
-\`\`\`
-
-## Configuration
-
-See \`blissful-infra.yaml\` for project settings.
-
-## Template
-
-- **Template:** ${options.template}
-- **Database:** ${options.database}
-- **Deploy Target:** ${options.deployTarget}
-
-## Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| \`/health\` | GET | Health check |
-| \`/ready\` | GET | Kubernetes readiness probe |
-| \`/live\` | GET | Kubernetes liveness probe |
-| \`/hello\` | GET | Returns "Hello, World!" |
-| \`/hello/:name\` | GET | Returns personalized greeting |
-| \`/echo\` | POST | Echoes request body |
-| \`/ws/events\` | WS | WebSocket for real-time events |
+# Docker
+docker-compose.override.yaml
 `
-  );
+    );
+  }
 
   spinner.succeed(`Scaffolded project in ./${options.name}`);
 
@@ -239,10 +331,126 @@ See \`blissful-infra.yaml\` for project settings.
   console.log();
 }
 
+function generateReadme(options: ProjectOptions): string {
+  const isFullstack = options.template === "fullstack";
+  const isFrontendOnly = options.template === "frontend";
+
+  let readme = `# ${options.name}
+
+Generated with [blissful-infra](https://github.com/you/blissful-infra).
+
+## Project Structure
+
+`;
+
+  if (isFullstack) {
+    readme += `\`\`\`
+${options.name}/
+├── backend/          # ${options.backend} API
+├── frontend/         # ${options.frontend} app
+├── blissful-infra.yaml
+└── docker-compose.yaml (generated)
+\`\`\`
+
+`;
+  }
+
+  readme += `## Quick Start
+
+\`\`\`bash
+# Start local environment
+blissful-infra up
+
+# Development mode (hot reload)
+blissful-infra dev
+
+# View logs
+blissful-infra logs
+
+# Stop environment
+blissful-infra down
+\`\`\`
+
+## Services
+
+`;
+
+  if (isFrontendOnly) {
+    readme += `| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+`;
+  } else if (isFullstack) {
+    readme += `| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:8080 |
+| Kafka | localhost:9092 |
+`;
+    if (options.database === "postgres" || options.database === "postgres-redis") {
+      readme += `| PostgreSQL | localhost:5432 |\n`;
+    }
+    if (options.database === "redis" || options.database === "postgres-redis") {
+      readme += `| Redis | localhost:6379 |\n`;
+    }
+  } else {
+    readme += `| Service | URL |
+|---------|-----|
+| API | http://localhost:8080 |
+| Kafka | localhost:9092 |
+`;
+    if (options.database === "postgres" || options.database === "postgres-redis") {
+      readme += `| PostgreSQL | localhost:5432 |\n`;
+    }
+    if (options.database === "redis" || options.database === "postgres-redis") {
+      readme += `| Redis | localhost:6379 |\n`;
+    }
+  }
+
+  if (!isFrontendOnly) {
+    readme += `
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| \`/health\` | GET | Health check |
+| \`/ready\` | GET | Kubernetes readiness probe |
+| \`/live\` | GET | Kubernetes liveness probe |
+| \`/hello\` | GET | Returns "Hello, World!" |
+| \`/hello/:name\` | GET | Returns personalized greeting |
+| \`/echo\` | POST | Echoes request body |
+| \`/ws/events\` | WS | WebSocket for real-time events |
+`;
+  }
+
+  readme += `
+## Configuration
+
+See \`blissful-infra.yaml\` for project settings.
+
+- **Type:** ${options.template}
+`;
+
+  if (options.backend) {
+    readme += `- **Backend:** ${options.backend}\n`;
+  }
+  if (options.frontend && options.frontend !== "none") {
+    readme += `- **Frontend:** ${options.frontend}\n`;
+  }
+
+  readme += `- **Database:** ${options.database}
+- **Deploy Target:** ${options.deployTarget}
+`;
+
+  return readme;
+}
+
 export const createCommand = new Command("create")
   .description("Create a new blissful-infra project")
   .argument("[name]", "Project name")
-  .option("-t, --template <template>", "Template to use (spring-boot, fastapi, express, go-chi, react-vite, fullstack)")
+  .option("-t, --template <template>", "Project type (fullstack, backend, frontend)")
+  .option("-b, --backend <backend>", "Backend template (spring-boot, fastapi, express, go-chi)")
+  .option("-f, --frontend <frontend>", "Frontend template (react-vite, nextjs, none)")
   .option("-d, --database <database>", "Database to include (none, postgres, redis, postgres-redis)")
   .option("--deploy <target>", "Deployment target (local-only, kubernetes, cloud)")
   .action(async (name?: string, opts?: CommandOptions) => {
@@ -255,11 +463,35 @@ export const createCommand = new Command("create")
 
     // Validate template if provided
     if (opts?.template) {
-      const validTemplates = TEMPLATES.map((t) => t.name);
-      if (!validTemplates.includes(opts.template as (typeof TEMPLATES)[number]["name"])) {
+      const validTypes = PROJECT_TYPES.map((t) => t.name);
+      if (!validTypes.includes(opts.template as (typeof PROJECT_TYPES)[number]["name"])) {
         console.error(
-          chalk.red(`Invalid template: ${opts.template}`),
-          chalk.dim(`\nValid templates: ${validTemplates.join(", ")}`)
+          chalk.red(`Invalid project type: ${opts.template}`),
+          chalk.dim(`\nValid types: ${validTypes.join(", ")}`)
+        );
+        process.exit(1);
+      }
+    }
+
+    // Validate backend if provided
+    if (opts?.backend) {
+      const validBackends = BACKEND_TEMPLATES.map((t) => t.name);
+      if (!validBackends.includes(opts.backend as (typeof BACKEND_TEMPLATES)[number]["name"])) {
+        console.error(
+          chalk.red(`Invalid backend: ${opts.backend}`),
+          chalk.dim(`\nValid backends: ${validBackends.join(", ")}`)
+        );
+        process.exit(1);
+      }
+    }
+
+    // Validate frontend if provided
+    if (opts?.frontend) {
+      const validFrontends = FRONTEND_TEMPLATES.map((t) => t.name);
+      if (!validFrontends.includes(opts.frontend as (typeof FRONTEND_TEMPLATES)[number]["name"])) {
+        console.error(
+          chalk.red(`Invalid frontend: ${opts.frontend}`),
+          chalk.dim(`\nValid frontends: ${validFrontends.join(", ")}`)
         );
         process.exit(1);
       }

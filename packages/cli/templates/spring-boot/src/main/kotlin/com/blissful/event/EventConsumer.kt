@@ -1,13 +1,13 @@
 package com.blissful.event
 
+import com.blissful.websocket.EventWebSocketHandler
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
-import org.springframework.messaging.simp.SimpMessagingTemplate
 import org.springframework.stereotype.Component
 
 @Component
 class EventConsumer(
-    private val messagingTemplate: SimpMessagingTemplate
+    private val webSocketHandler: EventWebSocketHandler
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -16,6 +16,6 @@ class EventConsumer(
         logger.info("Received event from Kafka: {}", message)
 
         // Forward to WebSocket clients
-        messagingTemplate.convertAndSend("/topic/events", message)
+        webSocketHandler.broadcast("kafka-event", message)
     }
 }
