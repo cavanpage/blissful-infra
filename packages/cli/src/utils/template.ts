@@ -90,3 +90,24 @@ function replaceVariables(content: string, variables: TemplateVariables): string
 export function getAvailableTemplates(): string[] {
   return ["spring-boot", "react-vite"];
 }
+
+export function getTemplateDir(templateName: string): string {
+  return path.join(__dirname, "..", "..", "templates", templateName);
+}
+
+export async function linkTemplate(
+  templateName: string,
+  destDir: string
+): Promise<void> {
+  const templateDir = getTemplateDir(templateName);
+
+  // Check if template exists
+  try {
+    await fs.access(templateDir);
+  } catch {
+    throw new Error(`Template '${templateName}' not found at ${templateDir}`);
+  }
+
+  // Create symlink to template directory
+  await fs.symlink(templateDir, destDir, "dir");
+}

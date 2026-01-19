@@ -6,20 +6,49 @@ import path from "node:path";
 import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
 
+async function findProjectDir(name?: string): Promise<string | null> {
+  // If name provided, look for that directory
+  if (name) {
+    const projectDir = path.join(process.cwd(), name);
+    try {
+      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
+      return projectDir;
+    } catch {
+      return null;
+    }
+  }
+
+  // Check current directory
+  try {
+    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
+    return process.cwd();
+  } catch {
+    return null;
+  }
+}
+
 export const downCommand = new Command("down")
   .description("Stop the local development environment")
+  .argument("[name]", "Project name (if running from parent directory)")
   .option("-v, --volumes", "Also remove volumes", false)
-  .action(async (opts: { volumes: boolean }) => {
-    // Check for config
-    const config = await loadConfig();
-    if (!config) {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Are you in a blissful-infra project directory?"));
+  .action(async (name: string | undefined, opts: { volumes: boolean }) => {
+    // Find the project directory
+    const projectDir = await findProjectDir(name);
+
+    if (!projectDir) {
+      if (name) {
+        console.error(chalk.red(`Project '${name}' not found.`));
+        console.error(chalk.dim(`No blissful-infra.yaml in ./${name}/`));
+      } else {
+        console.error(chalk.red("No blissful-infra.yaml found."));
+        console.error(chalk.dim("Run from project directory or specify project name:"));
+        console.error(chalk.cyan("  blissful-infra down my-app"));
+      }
       process.exit(1);
     }
 
     // Check for docker-compose.yaml
-    const composeFile = path.join(process.cwd(), "docker-compose.yaml");
+    const composeFile = path.join(projectDir, "docker-compose.yaml");
     try {
       await fs.access(composeFile);
     } catch {
@@ -35,7 +64,7 @@ export const downCommand = new Command("down")
         args.push("-v");
       }
 
-      await execa("docker", args, { stdio: "pipe" });
+      await execa("docker", args, { cwd: projectDir, stdio: "pipe" });
 
       if (opts.volumes) {
         spinner.succeed("Environment stopped and volumes removed");
@@ -45,6 +74,13 @@ export const downCommand = new Command("down")
       }
     } catch (error) {
       spinner.fail("Failed to stop environment");
-      throw error;
+      const execaError = error as { stderr?: string };
+      if (execaError.stderr?.includes("Cannot connect to the Docker daemon")) {
+        console.error(chalk.red("Docker is not running."));
+        console.error(chalk.dim("Please start Docker and try again."));
+      } else if (execaError.stderr) {
+        console.error(chalk.red(execaError.stderr));
+      }
+      process.exit(1);
     }
   });

@@ -4,12 +4,13 @@ import ora from "ora";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { execa } from "execa";
-import { copyTemplate, getAvailableTemplates } from "../utils/template.js";
+import { copyTemplate, linkTemplate, getAvailableTemplates } from "../utils/template.js";
 
 interface StartOptions {
   backend?: string;
   frontend?: string;
   database?: string;
+  link?: boolean;
 }
 
 const DEFAULTS = {
@@ -195,6 +196,7 @@ export const startCommand = new Command("start")
   .option("-b, --backend <backend>", `Backend framework (default: ${DEFAULTS.backend})`)
   .option("-f, --frontend <frontend>", `Frontend framework (default: ${DEFAULTS.frontend})`)
   .option("-d, --database <database>", `Database (none, postgres, redis, postgres-redis)`)
+  .option("-l, --link", "Link to templates instead of copying (for template development)")
   .action(async (name: string, opts: StartOptions) => {
     console.log();
     console.log(chalk.bold("⚡ blissful-infra start"), chalk.dim("- Create and run fullstack app"));
@@ -216,6 +218,7 @@ export const startCommand = new Command("start")
     const backend = opts.backend || DEFAULTS.backend;
     const frontend = opts.frontend || DEFAULTS.frontend;
     const database = opts.database || DEFAULTS.database;
+    const linkMode = opts.link || false;
 
     const projectDir = path.resolve(process.cwd(), name);
 
@@ -234,33 +237,56 @@ export const startCommand = new Command("start")
     const scaffoldSpinner = ora("Creating fullstack project...").start();
 
     await fs.mkdir(projectDir, { recursive: true });
-    await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
-    await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
 
-    // Copy backend
-    if (availableTemplates.includes(backend)) {
-      scaffoldSpinner.text = `Copying ${backend} backend...`;
-      await copyTemplate(backend, path.join(projectDir, "backend"), {
-        projectName: name,
-        database,
-        deployTarget: "local-only",
-      });
-    } else {
-      scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
-      await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
-    }
+    if (linkMode) {
+      // Link mode: create symlinks to template directories
+      scaffoldSpinner.text = `Linking ${backend} backend...`;
+      if (availableTemplates.includes(backend)) {
+        await linkTemplate(backend, path.join(projectDir, "backend"));
+      } else {
+        await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
+        scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
+        await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
+      }
 
-    // Copy frontend
-    if (availableTemplates.includes(frontend)) {
-      scaffoldSpinner.text = `Copying ${frontend} frontend...`;
-      await copyTemplate(frontend, path.join(projectDir, "frontend"), {
-        projectName: name,
-        database,
-        deployTarget: "local-only",
-      });
+      scaffoldSpinner.text = `Linking ${frontend} frontend...`;
+      if (availableTemplates.includes(frontend)) {
+        await linkTemplate(frontend, path.join(projectDir, "frontend"));
+      } else {
+        await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
+        scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
+        await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
+      }
     } else {
-      scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
-      await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
+      // Normal mode: copy template files
+      await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
+      await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
+
+      // Copy backend
+      if (availableTemplates.includes(backend)) {
+        scaffoldSpinner.text = `Copying ${backend} backend...`;
+        await copyTemplate(backend, path.join(projectDir, "backend"), {
+          projectName: name,
+          database,
+          deployTarget: "local-only",
+        });
+      } else {
+        scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
+        await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
+      }
+
+      // Copy frontend
+      if (availableTemplates.includes(frontend)) {
+        scaffoldSpinner.text = `Copying ${frontend} frontend...`;
+        await copyTemplate(frontend, path.join(projectDir, "frontend"), {
+          projectName: name,
+          database,
+          deployTarget: "local-only",
+        });
+      } else {
+        scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
+        await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
+      }
     }
 
     // Create config
@@ -293,7 +319,11 @@ docker-compose.override.yaml
 `
     );
 
-    scaffoldSpinner.succeed(`Created ${name}/`);
+    if (linkMode) {
+      scaffoldSpinner.succeed(`Created ${name}/ (linked to templates)`);
+    } else {
+      scaffoldSpinner.succeed(`Created ${name}/`);
+    }
 
     // Step 2: Generate docker-compose
     const composeSpinner = ora("Generating docker-compose.yaml...").start();
@@ -324,6 +354,9 @@ docker-compose.override.yaml
     // Success!
     console.log();
     console.log(chalk.green.bold("✓ Your fullstack app is running!"));
+    if (linkMode) {
+      console.log(chalk.yellow("  (Link mode: editing templates will affect this project)"));
+    }
     console.log();
     console.log(chalk.dim("  Frontend:    ") + chalk.cyan("http://localhost:3000"));
     console.log(chalk.dim("  Backend API: ") + chalk.cyan("http://localhost:8080"));

@@ -10,8 +10,8 @@ export interface ProjectConfig {
   deployTarget: string;
 }
 
-export async function loadConfig(): Promise<ProjectConfig | null> {
-  const configPath = path.join(process.cwd(), "blissful-infra.yaml");
+export async function loadConfig(projectDir?: string): Promise<ProjectConfig | null> {
+  const configPath = path.join(projectDir || process.cwd(), "blissful-infra.yaml");
 
   try {
     const content = await fs.readFile(configPath, "utf-8");

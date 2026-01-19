@@ -15,11 +15,30 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function startEnvironment(config: ProjectConfig): Promise<void> {
+async function findProjectDir(name?: string): Promise<string | null> {
+  if (name) {
+    const projectDir = path.join(process.cwd(), name);
+    try {
+      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
+      return projectDir;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
+    return process.cwd();
+  } catch {
+    return null;
+  }
+}
+
+async function startEnvironment(config: ProjectConfig, projectDir: string): Promise<void> {
   const spinner = ora("Starting local environment...").start();
 
   // Check for docker-compose.yaml
-  const composeFile = path.join(process.cwd(), "docker-compose.yaml");
+  const composeFile = path.join(projectDir, "docker-compose.yaml");
   let hasCompose = false;
 
   try {
@@ -31,13 +50,14 @@ async function startEnvironment(config: ProjectConfig): Promise<void> {
 
   if (!hasCompose) {
     spinner.info("No docker-compose.yaml found, generating...");
-    await generateDockerCompose(config);
+    await generateDockerCompose(config, projectDir);
   }
 
   spinner.text = "Starting containers...";
 
   try {
     await execa("docker", ["compose", "up", "-d"], {
+      cwd: projectDir,
       stdio: "inherit",
     });
 
@@ -81,7 +101,7 @@ async function startEnvironment(config: ProjectConfig): Promise<void> {
   }
 }
 
-async function generateDockerCompose(config: ProjectConfig): Promise<void> {
+async function generateDockerCompose(config: ProjectConfig, projectDir: string): Promise<void> {
   const services: Record<string, unknown> = {};
   const isFrontendOnly = config.type === "frontend";
   const isFullstack = config.type === "fullstack";
@@ -212,7 +232,7 @@ async function generateDockerCompose(config: ProjectConfig): Promise<void> {
 
   // Write docker-compose.yaml
   const yaml = generateYaml(compose);
-  await fs.writeFile(path.join(process.cwd(), "docker-compose.yaml"), yaml);
+  await fs.writeFile(path.join(projectDir, "docker-compose.yaml"), yaml);
 }
 
 function generateYaml(obj: unknown, indent = 0): string {
@@ -265,8 +285,9 @@ function generateYaml(obj: unknown, indent = 0): string {
 
 export const upCommand = new Command("up")
   .description("Start the local development environment")
+  .argument("[name]", "Project name (if running from parent directory)")
   .option("-d, --detach", "Run in background", true)
-  .action(async () => {
+  .action(async (name: string | undefined) => {
     // Check Docker is running
     if (!(await checkDockerRunning())) {
       console.error(chalk.red("Docker is not running."));
@@ -274,13 +295,26 @@ export const upCommand = new Command("up")
       process.exit(1);
     }
 
+    // Find project directory
+    const projectDir = await findProjectDir(name);
+    if (!projectDir) {
+      if (name) {
+        console.error(chalk.red(`Project '${name}' not found.`));
+      } else {
+        console.error(chalk.red("No blissful-infra.yaml found."));
+        console.error(chalk.dim("Run from project directory or specify project name:"));
+        console.error(chalk.cyan("  blissful-infra up my-app"));
+      }
+      process.exit(1);
+    }
+
     // Load project config
-    const config = await loadConfig();
+    const config = await loadConfig(projectDir);
     if (!config) {
       console.error(chalk.red("No blissful-infra.yaml found."));
       console.error(chalk.dim("Run"), chalk.cyan("blissful-infra create"), chalk.dim("first."));
       process.exit(1);
     }
 
-    await startEnvironment(config);
+    await startEnvironment(config, projectDir);
   });
