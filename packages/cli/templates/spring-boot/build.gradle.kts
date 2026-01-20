@@ -5,6 +5,9 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("jvm") version "2.3.0"
     kotlin("plugin.spring") version "2.3.0"
+{{#IF_POSTGRES}}
+    kotlin("plugin.jpa") version "2.3.0"
+{{/IF_POSTGRES}}
 }
 
 group = "com.blissful"
@@ -25,6 +28,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
+{{#IF_POSTGRES}}
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    runtimeOnly("org.postgresql:postgresql")
+{{/IF_POSTGRES}}
 
     // Kotlin
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -40,6 +47,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.kafka:spring-kafka-test")
     testImplementation("io.mockk:mockk:1.13.9")
+{{#IF_POSTGRES}}
+    testImplementation("com.h2database:h2")
+{{/IF_POSTGRES}}
 }
 
 tasks.withType<KotlinCompile> {
