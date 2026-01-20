@@ -11,7 +11,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 0** | Specification | Product spec, agent spec, timeline | ✅ Complete |
 | **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | ✅ Complete |
 | **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ⏳ Planned |
-| **Phase 3** | Observability | Metrics, logs, dashboard v1 | ⏳ Planned |
+| **Phase 3** | Observability | Metrics, logs, dashboard v1 | 🔄 In Progress |
 | **Phase 4** | Resilience | Chaos testing + FMEA | ⏳ Planned |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
 | **Phase 6** | Scale | More templates + cloud deploy | ⏳ Planned |

@@ -18,6 +18,10 @@ import {
   Copy,
   Check,
   X,
+  Cpu,
+  HardDrive,
+  Network,
+  BarChart3,
 } from 'lucide-react'
 
 interface Project {
@@ -68,6 +72,26 @@ interface ModelsResponse {
   error?: string
 }
 
+interface ContainerMetrics {
+  name: string
+  cpuPercent: number
+  memoryUsage: number
+  memoryLimit: number
+  memoryPercent: number
+  networkRx: number
+  networkTx: number
+}
+
+interface MetricsResponse {
+  containers: ContainerMetrics[]
+  timestamp: number
+}
+
+interface MetricsHistory {
+  timestamps: number[]
+  containers: Record<string, { cpu: number[]; memory: number[] }>
+}
+
 function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
@@ -75,8 +99,9 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
+  const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({ timestamps: [], containers: {} })
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -154,6 +179,39 @@ function App() {
     }
   }
 
+  const fetchMetrics = async () => {
+    if (!selectedProject || selectedProject.status !== 'running') return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/metrics`)
+      if (res.ok) {
+        const data: MetricsResponse = await res.json()
+        setMetricsHistory((prev) => {
+          const maxDataPoints = 30 // Keep last 30 data points (~30 seconds of history)
+          const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
+          const newContainers = { ...prev.containers }
+
+          for (const container of data.containers) {
+            if (!newContainers[container.name]) {
+              newContainers[container.name] = { cpu: [], memory: [] }
+            }
+            newContainers[container.name].cpu = [
+              ...newContainers[container.name].cpu,
+              container.cpuPercent,
+            ].slice(-maxDataPoints)
+            newContainers[container.name].memory = [
+              ...newContainers[container.name].memory,
+              container.memoryPercent,
+            ].slice(-maxDataPoints)
+          }
+
+          return { timestamps: newTimestamps, containers: newContainers }
+        })
+      }
+    } catch (e) {
+      console.error('Failed to fetch metrics:', e)
+    }
+  }
+
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
@@ -169,6 +227,16 @@ function App() {
       return () => clearInterval(interval)
     }
   }, [selectedProject?.name])
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'metrics') {
+      // Clear history when switching projects or tabs
+      setMetricsHistory({ timestamps: [], containers: {} })
+      fetchMetrics()
+      const interval = setInterval(fetchMetrics, 1000) // Fetch every second
+      return () => clearInterval(interval)
+    }
+  }, [selectedProject?.name, activeTab])
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -542,6 +610,17 @@ function App() {
                   <MessageSquare className="w-4 h-4" />
                   Agent
                 </button>
+                <button
+                  onClick={() => setActiveTab('metrics')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'metrics'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Metrics
+                </button>
               </div>
 
               {/* Tab Content */}
@@ -571,7 +650,7 @@ function App() {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : activeTab === 'chat' ? (
                 <div className="flex-1 flex flex-col">
                   {/* Model Selector */}
                   <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
@@ -673,7 +752,123 @@ function App() {
                     </div>
                   </form>
                 </div>
-              )}
+              ) : activeTab === 'metrics' ? (
+                <div className="flex-1 overflow-auto p-4">
+                  {selectedProject.status !== 'running' ? (
+                    <div className="text-gray-500 text-center py-8">
+                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>Start the project to see metrics</p>
+                    </div>
+                  ) : Object.keys(metricsHistory.containers).length === 0 ? (
+                    <div className="text-gray-500 text-center py-8">
+                      <Loader2 className="w-12 h-12 mx-auto mb-3 opacity-50 animate-spin" />
+                      <p>Loading metrics...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {Object.entries(metricsHistory.containers).map(([containerName, data]) => (
+                        <div key={containerName} className="bg-gray-800 rounded-lg p-4">
+                          <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                            <HardDrive className="w-5 h-5 text-blue-400" />
+                            {containerName}
+                          </h3>
+
+                          <div className="grid grid-cols-2 gap-6">
+                            {/* CPU Usage */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm text-gray-400 flex items-center gap-2">
+                                  <Cpu className="w-4 h-4" />
+                                  CPU Usage
+                                </span>
+                                <span className="text-sm font-mono">
+                                  {data.cpu.length > 0 ? data.cpu[data.cpu.length - 1].toFixed(1) : 0}%
+                                </span>
+                              </div>
+                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
+                                {data.cpu.map((value, i) => (
+                                  <div
+                                    key={i}
+                                    className="flex-1 bg-blue-500 rounded-sm transition-all"
+                                    style={{ height: `${Math.min(value, 100)}%` }}
+                                  />
+                                ))}
+                                {data.cpu.length === 0 && (
+                                  <div className="flex-1 text-center text-gray-600 text-sm">No data</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Memory Usage */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm text-gray-400 flex items-center gap-2">
+                                  <HardDrive className="w-4 h-4" />
+                                  Memory Usage
+                                </span>
+                                <span className="text-sm font-mono">
+                                  {data.memory.length > 0 ? data.memory[data.memory.length - 1].toFixed(1) : 0}%
+                                </span>
+                              </div>
+                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
+                                {data.memory.map((value, i) => (
+                                  <div
+                                    key={i}
+                                    className="flex-1 bg-green-500 rounded-sm transition-all"
+                                    style={{ height: `${Math.min(value, 100)}%` }}
+                                  />
+                                ))}
+                                {data.memory.length === 0 && (
+                                  <div className="flex-1 text-center text-gray-600 text-sm">No data</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Progress bars for current values */}
+                          <div className="mt-4 space-y-3">
+                            <div>
+                              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>CPU</span>
+                                <span>{data.cpu.length > 0 ? data.cpu[data.cpu.length - 1].toFixed(2) : 0}%</span>
+                              </div>
+                              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-blue-500 transition-all duration-300"
+                                  style={{ width: `${Math.min(data.cpu[data.cpu.length - 1] || 0, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>Memory</span>
+                                <span>{data.memory.length > 0 ? data.memory[data.memory.length - 1].toFixed(2) : 0}%</span>
+                              </div>
+                              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-green-500 transition-all duration-300"
+                                  style={{ width: `${Math.min(data.memory[data.memory.length - 1] || 0, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Network I/O section - would require tracking more data */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h3 className="text-lg font-medium mb-2 flex items-center gap-2">
+                          <Network className="w-5 h-5 text-purple-400" />
+                          Network Activity
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          Real-time network metrics shown above per container
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
