@@ -82,14 +82,26 @@ interface ContainerMetrics {
   networkTx: number
 }
 
+interface HttpMetrics {
+  totalRequests: number
+  requestsPerSecond: number
+  avgResponseTime: number
+}
+
 interface MetricsResponse {
   containers: ContainerMetrics[]
+  httpMetrics?: HttpMetrics
   timestamp: number
 }
 
 interface MetricsHistory {
   timestamps: number[]
   containers: Record<string, { cpu: number[]; memory: number[] }>
+  http: {
+    requestsPerSecond: number[]
+    avgResponseTime: number[]
+    lastTotalRequests: number
+  }
 }
 
 function App() {
@@ -101,7 +113,12 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
-  const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({ timestamps: [], containers: {} })
+  const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
+    timestamps: [],
+    containers: {},
+    http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
+  })
+  const [metricsLoaded, setMetricsLoaded] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -180,11 +197,18 @@ function App() {
   }
 
   const fetchMetrics = async () => {
-    if (!selectedProject || selectedProject.status !== 'running') return
+    if (!selectedProject) return
     try {
       const res = await fetch(`/api/projects/${selectedProject.name}/metrics`)
       if (res.ok) {
         const data: MetricsResponse = await res.json()
+        setMetricsLoaded(true)
+
+        if (data.containers.length === 0) {
+          // No containers running - keep metricsLoaded true but containers empty
+          return
+        }
+
         setMetricsHistory((prev) => {
           const maxDataPoints = 30 // Keep last 30 data points (~30 seconds of history)
           const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
@@ -204,11 +228,22 @@ function App() {
             ].slice(-maxDataPoints)
           }
 
-          return { timestamps: newTimestamps, containers: newContainers }
+          // Calculate HTTP metrics (requests per second from delta)
+          const newHttp = { ...prev.http }
+          if (data.httpMetrics) {
+            const deltaRequests = data.httpMetrics.totalRequests - prev.http.lastTotalRequests
+            const rps = prev.http.lastTotalRequests > 0 ? Math.max(0, deltaRequests) : 0
+            newHttp.requestsPerSecond = [...prev.http.requestsPerSecond, rps].slice(-maxDataPoints)
+            newHttp.avgResponseTime = [...prev.http.avgResponseTime, data.httpMetrics.avgResponseTime].slice(-maxDataPoints)
+            newHttp.lastTotalRequests = data.httpMetrics.totalRequests
+          }
+
+          return { timestamps: newTimestamps, containers: newContainers, http: newHttp }
         })
       }
     } catch (e) {
       console.error('Failed to fetch metrics:', e)
+      setMetricsLoaded(true) // Mark as loaded even on error
     }
   }
 
@@ -231,7 +266,12 @@ function App() {
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
       // Clear history when switching projects or tabs
-      setMetricsHistory({ timestamps: [], containers: {} })
+      setMetricsHistory({
+        timestamps: [],
+        containers: {},
+        http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
+      })
+      setMetricsLoaded(false)
       fetchMetrics()
       const interval = setInterval(fetchMetrics, 1000) // Fetch every second
       return () => clearInterval(interval)
@@ -754,15 +794,16 @@ function App() {
                 </div>
               ) : activeTab === 'metrics' ? (
                 <div className="flex-1 overflow-auto p-4">
-                  {selectedProject.status !== 'running' ? (
-                    <div className="text-gray-500 text-center py-8">
-                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p>Start the project to see metrics</p>
-                    </div>
-                  ) : Object.keys(metricsHistory.containers).length === 0 ? (
+                  {!metricsLoaded ? (
                     <div className="text-gray-500 text-center py-8">
                       <Loader2 className="w-12 h-12 mx-auto mb-3 opacity-50 animate-spin" />
                       <p>Loading metrics...</p>
+                    </div>
+                  ) : Object.keys(metricsHistory.containers).length === 0 ? (
+                    <div className="text-gray-500 text-center py-8">
+                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>No containers running</p>
+                      <p className="text-sm mt-2">Start the project to see metrics</p>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -855,15 +896,69 @@ function App() {
                         </div>
                       ))}
 
-                      {/* Network I/O section - would require tracking more data */}
+                      {/* HTTP Request Metrics */}
                       <div className="bg-gray-800 rounded-lg p-4">
-                        <h3 className="text-lg font-medium mb-2 flex items-center gap-2">
+                        <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
                           <Network className="w-5 h-5 text-purple-400" />
-                          Network Activity
+                          HTTP Requests
                         </h3>
-                        <p className="text-sm text-gray-500">
-                          Real-time network metrics shown above per container
-                        </p>
+
+                        {metricsHistory.http.requestsPerSecond.length === 0 ? (
+                          <p className="text-sm text-gray-500">
+                            No HTTP metrics available. Metrics are collected from Spring Boot Actuator on port 8080.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-6">
+                            {/* Requests per Second */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm text-gray-400">Requests/sec</span>
+                                <span className="text-sm font-mono">
+                                  {metricsHistory.http.requestsPerSecond.length > 0
+                                    ? metricsHistory.http.requestsPerSecond[metricsHistory.http.requestsPerSecond.length - 1]
+                                    : 0}
+                                </span>
+                              </div>
+                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
+                                {metricsHistory.http.requestsPerSecond.map((value, i) => {
+                                  const maxRps = Math.max(...metricsHistory.http.requestsPerSecond, 1)
+                                  return (
+                                    <div
+                                      key={i}
+                                      className="flex-1 bg-purple-500 rounded-sm transition-all"
+                                      style={{ height: `${(value / maxRps) * 100}%` }}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Average Response Time */}
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm text-gray-400">Avg Response Time</span>
+                                <span className="text-sm font-mono">
+                                  {metricsHistory.http.avgResponseTime.length > 0
+                                    ? metricsHistory.http.avgResponseTime[metricsHistory.http.avgResponseTime.length - 1].toFixed(1)
+                                    : 0}
+                                  ms
+                                </span>
+                              </div>
+                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
+                                {metricsHistory.http.avgResponseTime.map((value, i) => {
+                                  const maxTime = Math.max(...metricsHistory.http.avgResponseTime, 1)
+                                  return (
+                                    <div
+                                      key={i}
+                                      className="flex-1 bg-yellow-500 rounded-sm transition-all"
+                                      style={{ height: `${(value / maxTime) * 100}%` }}
+                                    />
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

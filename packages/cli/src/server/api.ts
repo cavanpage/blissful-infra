@@ -41,7 +41,14 @@ interface ContainerMetrics {
 
 interface ProjectMetrics {
   containers: ContainerMetrics[];
+  httpMetrics?: HttpMetrics;
   timestamp: number;
+}
+
+interface HttpMetrics {
+  totalRequests: number;
+  requestsPerSecond: number;
+  avgResponseTime: number;
 }
 
 interface ProjectStatus {
@@ -540,7 +547,52 @@ async function getContainerMetrics(projectDir: string): Promise<ProjectMetrics> 
     // Docker stats failed
   }
 
-  return { containers, timestamp: Date.now() };
+  // Try to fetch HTTP metrics from Spring Boot Actuator
+  const httpMetrics = await fetchActuatorMetrics();
+
+  return { containers, httpMetrics, timestamp: Date.now() };
+}
+
+async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {
+  try {
+    // Try to fetch from Spring Boot Actuator on port 8080
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1000);
+
+    const response = await fetch("http://localhost:8080/actuator/metrics/http.server.requests", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return undefined;
+
+    const data = await response.json() as {
+      measurements?: Array<{ statistic: string; value: number }>;
+    };
+
+    // Parse Micrometer metrics format
+    let totalRequests = 0;
+    let totalTime = 0;
+
+    for (const measurement of data.measurements || []) {
+      if (measurement.statistic === "COUNT") {
+        totalRequests = measurement.value;
+      } else if (measurement.statistic === "TOTAL_TIME") {
+        totalTime = measurement.value;
+      }
+    }
+
+    const avgResponseTime = totalRequests > 0 ? (totalTime / totalRequests) * 1000 : 0; // Convert to ms
+
+    return {
+      totalRequests,
+      requestsPerSecond: 0, // Will be calculated on frontend from delta
+      avgResponseTime,
+    };
+  } catch {
+    // Actuator not available or error
+    return undefined;
+  }
 }
 
 function parseMemoryValue(value: string): number {
