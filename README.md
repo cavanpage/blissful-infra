@@ -212,32 +212,33 @@ Once you have a project, you can use the project-first syntax for all commands:
 blissful-infra my-app up          # Start the project
 blissful-infra my-app down        # Stop the project
 blissful-infra my-app logs        # View logs
-blissful-infra my-app dashboard   # Open web dashboard
 blissful-infra my-app agent       # Start AI agent
 
 # Or use command-first syntax
 blissful-infra up my-app
-blissful-infra dashboard my-app
+blissful-infra agent my-app
 ```
 
-### Web Dashboard
+### Web Dashboard (Orchestrator)
 
-Launch a web-based dashboard to control your infrastructure and interact with the AI agent:
+Launch the orchestrator dashboard to manage all your projects from one place:
 
 ```bash
-blissful-infra my-app dashboard
+blissful-infra dashboard
 ```
 
-The dashboard provides:
-- **Project Control**: Start/stop services with one click
-- **Service Status**: View running containers and their ports
-- **Log Viewer**: Real-time logs from all services
-- **Agent Chat**: Ask the AI about errors, get debugging help
+The dashboard is a central control panel that lets you:
+- **Create New Projects**: Click "New Project" and configure your stack
+- **Manage Multiple Projects**: See all projects in the sidebar
+- **Start/Stop Services**: Control each project with one click
+- **View Logs**: Real-time logs from any selected project
+- **Agent Chat**: Ask the AI about errors for any project
 
 Options:
 ```bash
-blissful-infra my-app dashboard --port 3002    # Custom API port
-blissful-infra my-app dashboard --no-open      # Don't auto-open browser
+blissful-infra dashboard --dir ~/projects   # Specify projects directory
+blissful-infra dashboard --port 3002        # Custom API port
+blissful-infra dashboard --no-open          # Don't auto-open browser
 ```
 
 ### AI Agent (CLI)

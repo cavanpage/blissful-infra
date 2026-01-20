@@ -9,25 +9,6 @@ import { createApiServer } from "../server/api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
-}
-
 async function openBrowser(url: string): Promise<void> {
   const platform = process.platform;
   try {
@@ -43,19 +24,9 @@ async function openBrowser(url: string): Promise<void> {
   }
 }
 
-export async function dashboardAction(name?: string, opts: { port?: string; open?: boolean } = {}): Promise<void> {
-  // Find project directory
-  const projectDir = await findProjectDir(name);
-  if (!projectDir) {
-    if (name) {
-      console.error(chalk.red(`Project '${name}' not found.`));
-    } else {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Run from project directory or specify project name:"));
-      console.error(chalk.cyan("  blissful-infra dashboard my-app"));
-    }
-    process.exit(1);
-  }
+export async function dashboardAction(opts: { port?: string; open?: boolean; dir?: string } = {}): Promise<void> {
+  // Use provided directory or current working directory
+  const workingDir = opts.dir || process.cwd();
 
   const apiPort = parseInt(opts.port || "3002", 10);
   const dashboardPort = 3001;
@@ -64,15 +35,16 @@ export async function dashboardAction(name?: string, opts: { port?: string; open
   // Start API server
   const spinner = ora("Starting dashboard...").start();
 
-  const apiServer = createApiServer(projectDir, apiPort);
+  const apiServer = createApiServer(workingDir, apiPort);
   await apiServer.start();
 
   spinner.succeed("Dashboard ready");
 
   console.log();
-  console.log(chalk.green("Dashboard running:"));
+  console.log(chalk.green("Blissful Infra Orchestrator"));
   console.log(chalk.dim("  Dashboard: ") + chalk.cyan(`http://localhost:${dashboardPort}`));
   console.log(chalk.dim("  API:       ") + chalk.cyan(`http://localhost:${apiPort}`));
+  console.log(chalk.dim("  Projects:  ") + chalk.cyan(workingDir));
   console.log();
   console.log(chalk.dim("Press Ctrl+C to stop"));
   console.log();
@@ -113,10 +85,10 @@ export async function dashboardAction(name?: string, opts: { port?: string; open
 }
 
 export const dashboardCommand = new Command("dashboard")
-  .description("Open the web dashboard")
-  .argument("[name]", "Project name (if running from parent directory)")
+  .description("Open the orchestrator dashboard to manage all projects")
   .option("-p, --port <port>", "API server port", "3002")
   .option("--no-open", "Don't open browser automatically")
-  .action(async (name: string | undefined, opts: { port: string; open: boolean }) => {
-    await dashboardAction(name, opts);
+  .option("-d, --dir <directory>", "Working directory for projects", process.cwd())
+  .action(async (opts: { port: string; open: boolean; dir: string }) => {
+    await dashboardAction(opts);
   });

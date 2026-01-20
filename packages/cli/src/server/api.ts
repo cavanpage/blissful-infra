@@ -1,11 +1,13 @@
 import http from "node:http";
-import { execa } from "execa";
+import fs from "node:fs/promises";
 import path from "node:path";
-import { loadConfig } from "../utils/config.js";
+import { execa } from "execa";
+import { loadConfig, type ProjectConfig } from "../utils/config.js";
 import { collectDockerLogs } from "../utils/collectors.js";
 import {
   checkOllamaRunning,
   selectModel,
+  listModels,
   chat,
   type ChatMessage,
 } from "../utils/ollama.js";
@@ -29,15 +31,20 @@ interface Service {
 
 interface ProjectStatus {
   name: string;
+  path: string;
   status: "running" | "stopped" | "unknown";
+  type: string;
+  backend?: string;
+  frontend?: string;
+  database?: string;
   services: Service[];
 }
 
-export function createApiServer(projectDir: string, port = 3002) {
+export function createApiServer(workingDir: string, port = 3002) {
   const server = http.createServer(async (req, res) => {
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (req.method === "OPTIONS") {
@@ -49,24 +56,54 @@ export function createApiServer(projectDir: string, port = 3002) {
     const url = new URL(req.url || "/", `http://localhost:${port}`);
 
     try {
-      // GET /api/status - Get project and container status
-      if (req.method === "GET" && url.pathname === "/api/status") {
+      // GET /api/projects - List all projects in working directory
+      if (req.method === "GET" && url.pathname === "/api/projects") {
+        const projects = await listProjects(workingDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ projects }));
+        return;
+      }
+
+      // GET /api/projects/:name - Get specific project status
+      const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      if (req.method === "GET" && projectMatch) {
+        const projectName = projectMatch[1];
+        const projectDir = path.join(workingDir, projectName);
         const status = await getProjectStatus(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(status));
         return;
       }
 
-      // GET /api/logs - Get container logs
-      if (req.method === "GET" && url.pathname === "/api/logs") {
-        const logs = await collectDockerLogs(projectDir, { tail: 100 });
+      // POST /api/projects - Create new project
+      if (req.method === "POST" && url.pathname === "/api/projects") {
+        const body = await readBody(req);
+        const { name, type, backend, frontend, database } = JSON.parse(body);
+
+        if (!name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Missing project name" }));
+          return;
+        }
+
+        const result = await createProject(workingDir, {
+          name,
+          type: type || "fullstack",
+          backend: backend || "spring-boot",
+          frontend: frontend || "react-vite",
+          database,
+        });
+
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ logs }));
+        res.end(JSON.stringify(result));
         return;
       }
 
-      // POST /api/up - Start containers
-      if (req.method === "POST" && url.pathname === "/api/up") {
+      // POST /api/projects/:name/up - Start project
+      const upMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/up$/);
+      if (req.method === "POST" && upMatch) {
+        const projectName = upMatch[1];
+        const projectDir = path.join(workingDir, projectName);
         await execa("docker", ["compose", "up", "-d"], {
           cwd: projectDir,
           stdio: "pipe",
@@ -76,8 +113,11 @@ export function createApiServer(projectDir: string, port = 3002) {
         return;
       }
 
-      // POST /api/down - Stop containers
-      if (req.method === "POST" && url.pathname === "/api/down") {
+      // POST /api/projects/:name/down - Stop project
+      const downMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/down$/);
+      if (req.method === "POST" && downMatch) {
+        const projectName = downMatch[1];
+        const projectDir = path.join(workingDir, projectName);
         await execa("docker", ["compose", "down"], {
           cwd: projectDir,
           stdio: "pipe",
@@ -87,10 +127,24 @@ export function createApiServer(projectDir: string, port = 3002) {
         return;
       }
 
-      // POST /api/agent - Send query to agent
-      if (req.method === "POST" && url.pathname === "/api/agent") {
+      // GET /api/projects/:name/logs - Get project logs
+      const logsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs$/);
+      if (req.method === "GET" && logsMatch) {
+        const projectName = logsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const logs = await collectDockerLogs(projectDir, { tail: 100 });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ logs }));
+        return;
+      }
+
+      // POST /api/projects/:name/agent - Query agent for project
+      const agentMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/agent$/);
+      if (req.method === "POST" && agentMatch) {
+        const projectName = agentMatch[1];
+        const projectDir = path.join(workingDir, projectName);
         const body = await readBody(req);
-        const { query } = JSON.parse(body);
+        const { query, model: requestedModel } = JSON.parse(body);
 
         if (!query) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -98,9 +152,73 @@ export function createApiServer(projectDir: string, port = 3002) {
           return;
         }
 
-        const response = await handleAgentQuery(projectDir, query);
+        const response = await handleAgentQuery(projectDir, query, requestedModel);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ response }));
+        return;
+      }
+
+      // DELETE /api/projects/:name - Delete project
+      const deleteMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      if (req.method === "DELETE" && deleteMatch) {
+        const projectName = deleteMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        // Stop containers first
+        try {
+          await execa("docker", ["compose", "down", "-v"], {
+            cwd: projectDir,
+            stdio: "pipe",
+          });
+        } catch {
+          // Ignore errors if containers not running
+        }
+
+        // Remove directory
+        await fs.rm(projectDir, { recursive: true, force: true });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // GET /api/templates - List available templates
+      if (req.method === "GET" && url.pathname === "/api/templates") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          types: ["fullstack", "backend", "frontend"],
+          backends: ["spring-boot", "fastapi", "express", "go-chi"],
+          frontends: ["react-vite", "nextjs"],
+          databases: ["none", "postgres", "redis", "postgres-redis"],
+        }));
+        return;
+      }
+
+      // GET /api/models - List available Ollama models
+      if (req.method === "GET" && url.pathname === "/api/models") {
+        const ollamaRunning = await checkOllamaRunning();
+        if (!ollamaRunning) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            available: false,
+            models: [],
+            error: "Ollama is not running"
+          }));
+          return;
+        }
+
+        const models = await listModels();
+        const recommended = await selectModel();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          available: true,
+          models: models.map(m => ({
+            name: m.name,
+            size: m.size,
+            modifiedAt: m.modifiedAt,
+          })),
+          recommended,
+        }));
         return;
       }
 
@@ -150,13 +268,42 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+async function listProjects(workingDir: string): Promise<ProjectStatus[]> {
+  const projects: ProjectStatus[] = [];
+
+  try {
+    const entries = await fs.readdir(workingDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const projectDir = path.join(workingDir, entry.name);
+      const configPath = path.join(projectDir, "blissful-infra.yaml");
+
+      try {
+        await fs.access(configPath);
+        const status = await getProjectStatus(projectDir);
+        projects.push(status);
+      } catch {
+        // Not a blissful-infra project
+      }
+    }
+  } catch {
+    // Working directory doesn't exist or can't be read
+  }
+
+  return projects;
+}
+
 async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
   const config = await loadConfig(projectDir);
 
   if (!config) {
     return {
-      name: "Unknown",
+      name: path.basename(projectDir),
+      path: projectDir,
       status: "unknown",
+      type: "unknown",
       services: [],
     };
   }
@@ -231,14 +378,72 @@ async function getProjectStatus(projectDir: string): Promise<ProjectStatus> {
 
   return {
     name: config.name,
+    path: projectDir,
     status: anyRunning ? "running" : "stopped",
+    type: config.type || "backend",
+    backend: config.backend,
+    frontend: config.frontend,
+    database: config.database,
     services,
   };
 }
 
+async function createProject(
+  workingDir: string,
+  options: {
+    name: string;
+    type: string;
+    backend: string;
+    frontend: string;
+    database?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const { name, type, backend, frontend, database } = options;
+  const projectDir = path.join(workingDir, name);
+
+  // Check if project already exists
+  try {
+    await fs.access(projectDir);
+    return { success: false, error: "Project already exists" };
+  } catch {
+    // Good, doesn't exist
+  }
+
+  // Run the create command
+  try {
+    const args = ["create", name, "--type", type];
+
+    if (type !== "frontend") {
+      args.push("--backend", backend);
+    }
+    if (type !== "backend") {
+      args.push("--frontend", frontend);
+    }
+    if (database && database !== "none") {
+      args.push("--database", database);
+    }
+
+    // Get the CLI path
+    const cliPath = path.join(__dirname, "..", "index.js");
+
+    await execa("node", [cliPath, ...args], {
+      cwd: workingDir,
+      stdio: "pipe",
+    });
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create project",
+    };
+  }
+}
+
 async function handleAgentQuery(
   projectDir: string,
-  query: string
+  query: string,
+  requestedModel?: string
 ): Promise<string> {
   // Check if Ollama is running
   const ollamaRunning = await checkOllamaRunning();
@@ -246,8 +451,8 @@ async function handleAgentQuery(
     return "Error: Ollama is not running. Please start Ollama with `ollama serve` and try again.";
   }
 
-  // Select model
-  const model = await selectModel();
+  // Use requested model or auto-select
+  const model = requestedModel || (await selectModel());
   if (!model) {
     return "Error: No language models available in Ollama. Please pull a model with `ollama pull llama3.1:8b`.";
   }
@@ -269,3 +474,5 @@ async function handleAgentQuery(
   const response = await chat(model, messages);
   return response;
 }
+
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
