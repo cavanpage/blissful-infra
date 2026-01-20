@@ -23,6 +23,50 @@ async function findProjectDir(name?: string): Promise<string | null> {
   }
 }
 
+export async function logsAction(name?: string, opts: { follow?: boolean; lines?: string; service?: string } = {}): Promise<void> {
+  const projectDir = await findProjectDir(name);
+
+  if (!projectDir) {
+    if (name) {
+      console.error(chalk.red(`Project '${name}' not found.`));
+    } else {
+      console.error(chalk.red("No blissful-infra.yaml found."));
+      console.error(chalk.dim("Run from project directory or specify project name:"));
+      console.error(chalk.cyan("  blissful-infra logs my-app"));
+    }
+    process.exit(1);
+  }
+
+  const composeFile = path.join(projectDir, "docker-compose.yaml");
+  try {
+    await fs.access(composeFile);
+  } catch {
+    console.error(chalk.red("No docker-compose.yaml found."));
+    console.error(chalk.dim("Run"), chalk.cyan("blissful-infra up"), chalk.dim("first."));
+    process.exit(1);
+  }
+
+  const tail = opts.lines || "100";
+  const args = ["compose", "logs", `--tail=${tail}`];
+
+  if (opts.follow) {
+    args.push("-f");
+  }
+
+  if (opts.service) {
+    args.push(opts.service);
+  }
+
+  try {
+    await execa("docker", args, { cwd: projectDir, stdio: "inherit" });
+  } catch (error) {
+    const execaError = error as { signal?: string };
+    if (execaError.signal !== "SIGINT") {
+      throw error;
+    }
+  }
+}
+
 export const logsCommand = new Command("logs")
   .description("View logs from the local environment")
   .argument("[name]", "Project name (if running from parent directory)")
@@ -30,44 +74,5 @@ export const logsCommand = new Command("logs")
   .option("-n, --tail <lines>", "Number of lines to show", "100")
   .option("-s, --service <name>", "Show logs for specific service")
   .action(async (name: string | undefined, opts: { follow: boolean; tail: string; service?: string }) => {
-    const projectDir = await findProjectDir(name);
-
-    if (!projectDir) {
-      if (name) {
-        console.error(chalk.red(`Project '${name}' not found.`));
-      } else {
-        console.error(chalk.red("No blissful-infra.yaml found."));
-        console.error(chalk.dim("Run from project directory or specify project name:"));
-        console.error(chalk.cyan("  blissful-infra logs my-app"));
-      }
-      process.exit(1);
-    }
-
-    const composeFile = path.join(projectDir, "docker-compose.yaml");
-    try {
-      await fs.access(composeFile);
-    } catch {
-      console.error(chalk.red("No docker-compose.yaml found."));
-      console.error(chalk.dim("Run"), chalk.cyan("blissful-infra up"), chalk.dim("first."));
-      process.exit(1);
-    }
-
-    const args = ["compose", "logs", `--tail=${opts.tail}`];
-
-    if (opts.follow) {
-      args.push("-f");
-    }
-
-    if (opts.service) {
-      args.push(opts.service);
-    }
-
-    try {
-      await execa("docker", args, { cwd: projectDir, stdio: "inherit" });
-    } catch (error) {
-      const execaError = error as { signal?: string };
-      if (execaError.signal !== "SIGINT") {
-        throw error;
-      }
-    }
+    await logsAction(name, { follow: opts.follow, lines: opts.tail, service: opts.service });
   });

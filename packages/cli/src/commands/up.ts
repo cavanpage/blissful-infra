@@ -284,53 +284,57 @@ function generateYaml(obj: unknown, indent = 0): string {
   return String(obj);
 }
 
+export async function upAction(name?: string): Promise<void> {
+  // Check Docker is running
+  if (!(await checkDockerRunning())) {
+    console.error(chalk.red("Docker is not running."));
+    console.error(chalk.dim("Please start Docker and try again."));
+    process.exit(1);
+  }
+
+  // Find project directory
+  const projectDir = await findProjectDir(name);
+  if (!projectDir) {
+    if (name) {
+      console.error(chalk.red(`Project '${name}' not found.`));
+    } else {
+      console.error(chalk.red("No blissful-infra.yaml found."));
+      console.error(chalk.dim("Run from project directory or specify project name:"));
+      console.error(chalk.cyan("  blissful-infra up my-app"));
+    }
+    process.exit(1);
+  }
+
+  // Load project config
+  const config = await loadConfig(projectDir);
+  if (!config) {
+    console.error(chalk.red("No blissful-infra.yaml found."));
+    console.error(chalk.dim("Run"), chalk.cyan("blissful-infra create"), chalk.dim("first."));
+    process.exit(1);
+  }
+
+  // Check for port conflicts
+  const requiredPorts = getRequiredPorts(config);
+  const portResults = await checkPorts(requiredPorts);
+  const conflicts = portResults.filter((p) => p.inUse);
+
+  if (conflicts.length > 0) {
+    console.error(chalk.red("Port conflicts detected:"));
+    for (const conflict of conflicts) {
+      console.error(chalk.dim(`  • Port ${conflict.port} (${conflict.service}) is already in use`));
+    }
+    console.error();
+    console.error(chalk.dim("Stop the conflicting services or use different ports."));
+    process.exit(1);
+  }
+
+  await startEnvironment(config, projectDir);
+}
+
 export const upCommand = new Command("up")
   .description("Start the local development environment")
   .argument("[name]", "Project name (if running from parent directory)")
   .option("-d, --detach", "Run in background", true)
   .action(async (name: string | undefined) => {
-    // Check Docker is running
-    if (!(await checkDockerRunning())) {
-      console.error(chalk.red("Docker is not running."));
-      console.error(chalk.dim("Please start Docker and try again."));
-      process.exit(1);
-    }
-
-    // Find project directory
-    const projectDir = await findProjectDir(name);
-    if (!projectDir) {
-      if (name) {
-        console.error(chalk.red(`Project '${name}' not found.`));
-      } else {
-        console.error(chalk.red("No blissful-infra.yaml found."));
-        console.error(chalk.dim("Run from project directory or specify project name:"));
-        console.error(chalk.cyan("  blissful-infra up my-app"));
-      }
-      process.exit(1);
-    }
-
-    // Load project config
-    const config = await loadConfig(projectDir);
-    if (!config) {
-      console.error(chalk.red("No blissful-infra.yaml found."));
-      console.error(chalk.dim("Run"), chalk.cyan("blissful-infra create"), chalk.dim("first."));
-      process.exit(1);
-    }
-
-    // Check for port conflicts
-    const requiredPorts = getRequiredPorts(config);
-    const portResults = await checkPorts(requiredPorts);
-    const conflicts = portResults.filter((p) => p.inUse);
-
-    if (conflicts.length > 0) {
-      console.error(chalk.red("Port conflicts detected:"));
-      for (const conflict of conflicts) {
-        console.error(chalk.dim(`  • Port ${conflict.port} (${conflict.service}) is already in use`));
-      }
-      console.error();
-      console.error(chalk.dim("Stop the conflicting services or use different ports."));
-      process.exit(1);
-    }
-
-    await startEnvironment(config, projectDir);
+    await upAction(name);
   });
