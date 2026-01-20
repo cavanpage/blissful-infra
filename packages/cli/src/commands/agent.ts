@@ -242,54 +242,58 @@ async function runInteractiveMode(
   prompt();
 }
 
+export async function agentAction(name?: string, opts: AgentOptions = {}): Promise<void> {
+  // Check Ollama is running
+  const ollamaRunning = await checkOllamaRunning();
+  if (!ollamaRunning) {
+    console.error(chalk.red("Ollama is not running."));
+    console.error(chalk.dim("Please start Ollama and try again:"));
+    console.error(chalk.cyan("  ollama serve"));
+    console.error();
+    console.error(chalk.dim("Install Ollama from: https://ollama.ai"));
+    process.exit(1);
+  }
+
+  // Select model
+  const model = opts.model || (await selectModel());
+  if (!model) {
+    console.error(chalk.red("No language models available in Ollama."));
+    console.error(chalk.dim("Pull a model first:"));
+    console.error(chalk.cyan("  ollama pull llama3.1:8b"));
+    process.exit(1);
+  }
+
+  // Find project directory
+  const projectDir = await findProjectDir(name);
+  if (!projectDir) {
+    if (name) {
+      console.error(chalk.red(`Project '${name}' not found.`));
+    } else {
+      console.error(chalk.red("No blissful-infra.yaml found."));
+      console.error(chalk.dim("Run from project directory or specify project name:"));
+      console.error(chalk.cyan("  blissful-infra agent my-app"));
+    }
+    process.exit(1);
+  }
+
+  // Collect context
+  const spinner = ora("Collecting context...").start();
+  const context = await collectContext(projectDir);
+  spinner.succeed(context.summary);
+
+  // Run in query mode or interactive mode
+  if (opts.query) {
+    await runSingleQuery(opts.query, model, context);
+  } else {
+    await runInteractiveMode(model, context, projectDir);
+  }
+}
+
 export const agentCommand = new Command("agent")
   .description("AI-powered infrastructure assistant")
   .argument("[name]", "Project name (if running from parent directory)")
   .option("-q, --query <query>", "Single query mode (non-interactive)")
   .option("-m, --model <model>", "Override model selection")
   .action(async (name: string | undefined, opts: AgentOptions) => {
-    // Check Ollama is running
-    const ollamaRunning = await checkOllamaRunning();
-    if (!ollamaRunning) {
-      console.error(chalk.red("Ollama is not running."));
-      console.error(chalk.dim("Please start Ollama and try again:"));
-      console.error(chalk.cyan("  ollama serve"));
-      console.error();
-      console.error(chalk.dim("Install Ollama from: https://ollama.ai"));
-      process.exit(1);
-    }
-
-    // Select model
-    const model = opts.model || (await selectModel());
-    if (!model) {
-      console.error(chalk.red("No language models available in Ollama."));
-      console.error(chalk.dim("Pull a model first:"));
-      console.error(chalk.cyan("  ollama pull llama3.1:8b"));
-      process.exit(1);
-    }
-
-    // Find project directory
-    const projectDir = await findProjectDir(name);
-    if (!projectDir) {
-      if (name) {
-        console.error(chalk.red(`Project '${name}' not found.`));
-      } else {
-        console.error(chalk.red("No blissful-infra.yaml found."));
-        console.error(chalk.dim("Run from project directory or specify project name:"));
-        console.error(chalk.cyan("  blissful-infra agent my-app"));
-      }
-      process.exit(1);
-    }
-
-    // Collect context
-    const spinner = ora("Collecting context...").start();
-    const context = await collectContext(projectDir);
-    spinner.succeed(context.summary);
-
-    // Run in query mode or interactive mode
-    if (opts.query) {
-      await runSingleQuery(opts.query, model, context);
-    } else {
-      await runInteractiveMode(model, context, projectDir);
-    }
+    await agentAction(name, opts);
   });

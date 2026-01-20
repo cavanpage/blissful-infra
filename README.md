@@ -203,12 +203,56 @@ blissful-infra dev
 blissful-infra dev --local
 ```
 
-### Other Commands
+### Project Commands
+
+Once you have a project, you can use the project-first syntax for all commands:
 
 ```bash
-blissful-infra logs      # View container logs
-blissful-infra down      # Stop everything
+# Project-first syntax (recommended)
+blissful-infra my-app up          # Start the project
+blissful-infra my-app down        # Stop the project
+blissful-infra my-app logs        # View logs
+blissful-infra my-app dashboard   # Open web dashboard
+blissful-infra my-app agent       # Start AI agent
+
+# Or use command-first syntax
+blissful-infra up my-app
+blissful-infra dashboard my-app
 ```
+
+### Web Dashboard
+
+Launch a web-based dashboard to control your infrastructure and interact with the AI agent:
+
+```bash
+blissful-infra my-app dashboard
+```
+
+The dashboard provides:
+- **Project Control**: Start/stop services with one click
+- **Service Status**: View running containers and their ports
+- **Log Viewer**: Real-time logs from all services
+- **Agent Chat**: Ask the AI about errors, get debugging help
+
+Options:
+```bash
+blissful-infra my-app dashboard --port 3002    # Custom API port
+blissful-infra my-app dashboard --no-open      # Don't auto-open browser
+```
+
+### AI Agent (CLI)
+
+Query the AI agent directly from the command line:
+
+```bash
+# Interactive mode
+blissful-infra my-app agent
+
+# Single query
+blissful-infra my-app agent --query "What errors are in the logs?"
+```
+
+The agent analyzes your Docker logs and git history to help debug issues.
 
 ## Project Types
 
