@@ -12,6 +12,10 @@ import {
   Trash2,
   FolderOpen,
   ChevronRight,
+  AlertCircle,
+  Copy,
+  Check,
+  X,
 } from 'lucide-react'
 
 interface Project {
@@ -76,6 +80,8 @@ function App() {
   const [creating, setCreating] = useState(false)
   const [models, setModels] = useState<ModelsResponse | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null)
+  const [copied, setCopied] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -230,13 +236,37 @@ function App() {
         })
         await fetchProjects()
       } else {
-        alert(data.error || 'Failed to create project')
+        setErrorModal({
+          title: 'Failed to create project',
+          message: data.error || 'An unknown error occurred',
+        })
       }
     } catch (e) {
       console.error('Failed to create project:', e)
-      alert('Failed to create project')
+      setErrorModal({
+        title: 'Failed to create project',
+        message: e instanceof Error ? e.message : 'Network error - could not reach server',
+      })
     } finally {
       setCreating(false)
+    }
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     }
   }
 
@@ -729,6 +759,55 @@ function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {errorModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-lg">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-6 h-6 text-red-400" />
+                <h2 className="text-xl font-semibold text-red-400">{errorModal.title}</h2>
+              </div>
+              <button
+                onClick={() => setErrorModal(null)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="relative">
+              <pre className="bg-gray-900 rounded-lg p-4 text-sm text-gray-300 overflow-auto max-h-64 whitespace-pre-wrap font-mono">
+                {errorModal.message}
+              </pre>
+              <button
+                onClick={() => copyToClipboard(errorModal.message)}
+                className="absolute top-2 right-2 p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
+                title="Copy to clipboard"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4 text-green-400" />
+                    <span className="text-xs text-green-400">Copied!</span>
+                  </>
+                ) : (
+                  <Copy className="w-4 h-4 text-gray-400" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setErrorModal(null)}
+                className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

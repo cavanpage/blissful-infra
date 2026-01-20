@@ -411,7 +411,7 @@ async function createProject(
 
   // Run the create command
   try {
-    const args = ["create", name, "--type", type];
+    const args = ["create", name, "--template", type, "--deploy", "local-only"];
 
     if (type !== "frontend") {
       args.push("--backend", backend);
@@ -419,23 +419,25 @@ async function createProject(
     if (type !== "backend") {
       args.push("--frontend", frontend);
     }
-    if (database && database !== "none") {
-      args.push("--database", database);
-    }
+    // Always pass database to avoid interactive prompt
+    args.push("--database", database || "none");
 
     // Get the CLI path
     const cliPath = path.join(__dirname, "..", "index.js");
 
-    await execa("node", [cliPath, ...args], {
+    const result = await execa("node", [cliPath, ...args], {
       cwd: workingDir,
       stdio: "pipe",
     });
 
     return { success: true };
   } catch (error) {
+    // Extract stderr for more useful error messages
+    const execaError = error as { stderr?: string; message?: string };
+    const errorMessage = execaError.stderr || execaError.message || "Failed to create project";
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to create project",
+      error: errorMessage,
     };
   }
 }
