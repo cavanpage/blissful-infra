@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   Play,
   Square,
@@ -628,7 +630,15 @@ function App() {
                                 : 'bg-gray-800 text-gray-100'
                             }`}
                           >
-                            <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                            {msg.role === 'user' ? (
+                              <span>{msg.content}</span>
+                            ) : (
+                              <div className="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:my-2 prose-ul:my-2 prose-ol:my-2 prose-pre:my-2 prose-pre:bg-gray-900 prose-pre:rounded-lg prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {msg.content}
+                                </ReactMarkdown>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))
