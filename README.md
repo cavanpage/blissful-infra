@@ -203,6 +203,43 @@ blissful-infra dev
 blissful-infra dev --local
 ```
 
+### Web Dashboard
+
+Launch a web-based dashboard to control your infrastructure and interact with the AI agent:
+
+```bash
+cd my-app
+blissful-infra dashboard
+```
+
+The dashboard provides:
+- **Project Control**: Start/stop services with one click
+- **Service Status**: View running containers and their ports
+- **Log Viewer**: Real-time logs from all services
+- **Agent Chat**: Ask the AI about errors, get debugging help
+
+Options:
+```bash
+blissful-infra dashboard --port 3002    # Custom API port
+blissful-infra dashboard --no-open      # Don't auto-open browser
+```
+
+### AI Agent (CLI)
+
+Query the AI agent directly from the command line:
+
+```bash
+cd my-app
+
+# Interactive mode
+blissful-infra agent
+
+# Single query
+blissful-infra agent --query "What errors are in the logs?"
+```
+
+The agent analyzes your Docker logs and git history to help debug issues.
+
 ### Other Commands
 
 ```bash
