@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { execa } from "execa";
 import { copyTemplate, linkTemplate, getAvailableTemplates } from "../utils/template.js";
+import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 
 interface StartOptions {
   backend?: string;
@@ -219,6 +220,21 @@ export const startCommand = new Command("start")
     const frontend = opts.frontend || DEFAULTS.frontend;
     const database = opts.database || DEFAULTS.database;
     const linkMode = opts.link || false;
+
+    // Check for port conflicts before creating anything
+    const requiredPorts = getRequiredPorts({ type: "fullstack", database });
+    const portResults = await checkPorts(requiredPorts);
+    const conflicts = portResults.filter((p) => p.inUse);
+
+    if (conflicts.length > 0) {
+      console.error(chalk.red("Port conflicts detected:"));
+      for (const conflict of conflicts) {
+        console.error(chalk.dim(`  • Port ${conflict.port} (${conflict.service}) is already in use`));
+      }
+      console.error();
+      console.error(chalk.dim("Stop the conflicting services or use different ports."));
+      process.exit(1);
+    }
 
     const projectDir = path.resolve(process.cwd(), name);
 
