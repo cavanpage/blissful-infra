@@ -81,7 +81,37 @@ async function copyFile(
 }
 
 function replaceVariables(content: string, variables: TemplateVariables): string {
-  return content
+  let result = content;
+
+  // Handle conditional blocks: {{#IF_POSTGRES}}...{{/IF_POSTGRES}}
+  const hasPostgres = variables.database === "postgres" || variables.database === "postgres-redis";
+  result = result.replace(
+    /\{\{#IF_POSTGRES\}\}([\s\S]*?)\{\{\/IF_POSTGRES\}\}/g,
+    hasPostgres ? "$1" : ""
+  );
+
+  // Handle conditional blocks: {{#IF_REDIS}}...{{/IF_REDIS}}
+  const hasRedis = variables.database === "redis" || variables.database === "postgres-redis";
+  result = result.replace(
+    /\{\{#IF_REDIS\}\}([\s\S]*?)\{\{\/IF_REDIS\}\}/g,
+    hasRedis ? "$1" : ""
+  );
+
+  // Handle negative conditional: {{#IF_NO_DATABASE}}...{{/IF_NO_DATABASE}}
+  const noDatabase = variables.database === "none";
+  result = result.replace(
+    /\{\{#IF_NO_DATABASE\}\}([\s\S]*?)\{\{\/IF_NO_DATABASE\}\}/g,
+    noDatabase ? "$1" : ""
+  );
+
+  // Handle no postgres conditional: {{#IF_NO_POSTGRES}}...{{/IF_NO_POSTGRES}}
+  result = result.replace(
+    /\{\{#IF_NO_POSTGRES\}\}([\s\S]*?)\{\{\/IF_NO_POSTGRES\}\}/g,
+    hasPostgres ? "" : "$1"
+  );
+
+  // Replace simple variables
+  return result
     .replace(/\{\{PROJECT_NAME\}\}/g, variables.projectName)
     .replace(/\{\{DATABASE\}\}/g, variables.database)
     .replace(/\{\{DEPLOY_TARGET\}\}/g, variables.deployTarget);

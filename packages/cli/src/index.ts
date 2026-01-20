@@ -10,7 +10,7 @@ import { downCommand, downAction } from "./commands/down.js";
 import { logsCommand, logsAction } from "./commands/logs.js";
 import { devCommand } from "./commands/dev.js";
 import { agentCommand, agentAction } from "./commands/agent.js";
-import { dashboardCommand, dashboardAction } from "./commands/dashboard.js";
+import { dashboardCommand } from "./commands/dashboard.js";
 
 const program = new Command();
 
@@ -94,15 +94,6 @@ async function main() {
         .option("-m, --model <model>", "Override model selection")
         .action(async (opts: { query?: string; model?: string }) => {
           await agentAction(projectName, opts);
-        });
-
-      projectProgram
-        .command("dashboard")
-        .description("Open the web dashboard")
-        .option("-p, --port <port>", "API server port", "3002")
-        .option("--no-open", "Don't open browser automatically")
-        .action(async (opts: { port: string; open: boolean }) => {
-          await dashboardAction(projectName, opts);
         });
 
       // Parse project-specific command
