@@ -180,8 +180,20 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      await fetch(`/api/projects/${selectedProject.name}/up`, { method: 'POST' })
+      const res = await fetch(`/api/projects/${selectedProject.name}/up`, { method: 'POST' })
+      const data = await res.json()
+      if (!data.success && data.error) {
+        setErrorModal({
+          title: 'Failed to start project',
+          message: data.error,
+        })
+      }
       await fetchProjects()
+    } catch (e) {
+      setErrorModal({
+        title: 'Failed to start project',
+        message: e instanceof Error ? e.message : 'Network error',
+      })
     } finally {
       setLoading(false)
     }
@@ -191,8 +203,20 @@ function App() {
     if (!selectedProject) return
     setLoading(true)
     try {
-      await fetch(`/api/projects/${selectedProject.name}/down`, { method: 'POST' })
+      const res = await fetch(`/api/projects/${selectedProject.name}/down`, { method: 'POST' })
+      const data = await res.json()
+      if (!data.success && data.error) {
+        setErrorModal({
+          title: 'Failed to stop project',
+          message: data.error,
+        })
+      }
       await fetchProjects()
+    } catch (e) {
+      setErrorModal({
+        title: 'Failed to stop project',
+        message: e instanceof Error ? e.message : 'Network error',
+      })
     } finally {
       setLoading(false)
     }

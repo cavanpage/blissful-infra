@@ -103,13 +103,24 @@ export function createApiServer(workingDir: string, port = 3002) {
       const upMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/up$/);
       if (req.method === "POST" && upMatch) {
         const projectName = upMatch[1];
-        const projectDir = path.join(workingDir, projectName);
-        await execa("docker", ["compose", "up", "-d"], {
-          cwd: projectDir,
-          stdio: "pipe",
-        });
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true }));
+
+        // Use the CLI's up command which generates docker-compose.yaml
+        const cliPath = path.join(__dirname, "..", "index.js");
+        try {
+          await execa("node", [cliPath, "up", projectName], {
+            cwd: workingDir,
+            stdio: "pipe",
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true }));
+        } catch (error) {
+          const execaError = error as { stderr?: string; message?: string };
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: false,
+            error: execaError.stderr || execaError.message || "Failed to start project"
+          }));
+        }
         return;
       }
 
