@@ -9,7 +9,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | Phase | Focus | Deliverable | Status |
 |-------|-------|-------------|--------|
 | **Phase 0** | Specification | Product spec, agent spec, timeline | ✅ Complete |
-| **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | 🚧 In Progress |
+| **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | ✅ Complete |
 | **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ⏳ Planned |
 | **Phase 3** | Observability | Metrics, logs, dashboard v1 | ⏳ Planned |
 | **Phase 4** | Resilience | Chaos testing + FMEA | ⏳ Planned |
@@ -34,7 +34,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 
 ---
 
-## Phase 1: MVP (In Progress)
+## Phase 1: MVP ✅
 
 **Goal:** Developer can scaffold a project, run it locally, and ask the agent basic questions.
 
@@ -69,17 +69,17 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
   - Redis (optional, based on user selection)
   - PostgreSQL (optional, based on user selection)
 - [x] Health check orchestration (wait for dependencies)
-- [ ] Port management and conflict detection
+- [x] Port management and conflict detection
 
 ### 1.4 Basic Agent
-- [ ] Ollama integration (connection, model detection)
-- [ ] Simple query interface: `blissful-infra agent --query "..."`
-- [ ] Interactive mode: `blissful-infra agent`
-- [ ] Context collection:
+- [x] Ollama integration (connection, model detection)
+- [x] Simple query interface: `blissful-infra agent --query "..."`
+- [x] Interactive mode: `blissful-infra agent`
+- [x] Context collection:
   - Read local logs from Docker
   - Read recent git commits
-- [ ] Basic analysis prompts (no knowledge base yet)
-- [ ] Model fallback (70b → 8b if unavailable)
+- [x] Basic analysis prompts (no knowledge base yet)
+- [x] Model fallback (70b → 8b if unavailable)
 
 ### MVP Definition of Done
 ```

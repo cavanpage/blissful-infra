@@ -7,6 +7,7 @@ import { upCommand } from "./commands/up.js";
 import { downCommand } from "./commands/down.js";
 import { logsCommand } from "./commands/logs.js";
 import { devCommand } from "./commands/dev.js";
+import { agentCommand } from "./commands/agent.js";
 
 const program = new Command();
 
@@ -21,5 +22,6 @@ program.addCommand(upCommand);
 program.addCommand(downCommand);
 program.addCommand(logsCommand);
 program.addCommand(devCommand);
+program.addCommand(agentCommand);
 
 program.parse();

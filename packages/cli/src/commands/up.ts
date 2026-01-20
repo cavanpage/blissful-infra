@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import { loadConfig, type ProjectConfig } from "../utils/config.js";
+import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 
 async function checkDockerRunning(): Promise<boolean> {
   try {
@@ -313,6 +314,21 @@ export const upCommand = new Command("up")
     if (!config) {
       console.error(chalk.red("No blissful-infra.yaml found."));
       console.error(chalk.dim("Run"), chalk.cyan("blissful-infra create"), chalk.dim("first."));
+      process.exit(1);
+    }
+
+    // Check for port conflicts
+    const requiredPorts = getRequiredPorts(config);
+    const portResults = await checkPorts(requiredPorts);
+    const conflicts = portResults.filter((p) => p.inUse);
+
+    if (conflicts.length > 0) {
+      console.error(chalk.red("Port conflicts detected:"));
+      for (const conflict of conflicts) {
+        console.error(chalk.dim(`  • Port ${conflict.port} (${conflict.service}) is already in use`));
+      }
+      console.error();
+      console.error(chalk.dim("Stop the conflicting services or use different ports."));
       process.exit(1);
     }
 
