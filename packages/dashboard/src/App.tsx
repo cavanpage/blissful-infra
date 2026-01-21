@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from 'recharts'
+import {
   Play,
   Square,
   RefreshCw,
@@ -18,7 +27,6 @@ import {
   Copy,
   Check,
   X,
-  Cpu,
   HardDrive,
   Network,
   BarChart3,
@@ -104,6 +112,135 @@ interface MetricsHistory {
   }
 }
 
+// Time window options
+const TIME_WINDOWS = [
+  { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
+  { label: '5m', value: 300, dataPoints: 60, intervalMs: 5000 },
+  { label: '15m', value: 900, dataPoints: 90, intervalMs: 10000 },
+  { label: '1h', value: 3600, dataPoints: 120, intervalMs: 30000 },
+  { label: '24h', value: 86400, dataPoints: 144, intervalMs: 600000 },
+] as const
+
+type TimeWindow = (typeof TIME_WINDOWS)[number]
+
+// Format timestamp for x-axis display
+function formatTime(timestamp: number, windowSeconds: number): string {
+  const date = new Date(timestamp)
+  if (windowSeconds <= 300) {
+    // 5 minutes or less: show HH:MM:SS
+    return date.toLocaleTimeString('en-US', { hour12: false })
+  } else if (windowSeconds <= 3600) {
+    // 1 hour or less: show HH:MM
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  } else {
+    // More than 1 hour: show MM/DD HH:MM
+    return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' +
+      date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+}
+
+// Time Series Chart Component using Recharts
+function TimeSeriesChart({
+  data,
+  timestamps,
+  color,
+  maxValue,
+  label,
+  unit = '%',
+  windowSeconds = 60,
+}: {
+  data: number[]
+  timestamps: number[]
+  color: string
+  maxValue?: number
+  label: string
+  unit?: string
+  windowSeconds?: number
+}) {
+  const currentValue = data.length > 0 ? data[data.length - 1] : 0
+
+  // Calculate time domain - show full window, not just collected data
+  const now = Date.now()
+  const windowStart = now - windowSeconds * 1000
+  const timeDomain: [number, number] = [windowStart, now]
+
+  // Convert to recharts format
+  const chartData = data.map((value, i) => ({
+    time: timestamps[i] || Date.now(),
+    value,
+  }))
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-400">{label}</span>
+        <span className="text-sm font-mono">
+          {currentValue.toFixed(1)}{unit}
+        </span>
+      </div>
+      <div className="bg-gray-900 rounded-lg overflow-hidden h-32">
+        {chartData.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-gray-600 text-sm">
+            No data
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+              <defs>
+                <linearGradient id={`gradient-${label.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis
+                dataKey="time"
+                type="number"
+                domain={timeDomain}
+                tickFormatter={(ts) => formatTime(ts, windowSeconds)}
+                stroke="#6b7280"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                tickCount={5}
+              />
+              <YAxis
+                domain={maxValue !== undefined ? [0, maxValue] : ['auto', 'auto']}
+                stroke="#6b7280"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                width={40}
+                tickFormatter={(v) => `${v}${unit}`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1f2937',
+                  border: '1px solid #374151',
+                  borderRadius: '0.5rem',
+                  fontSize: '12px',
+                }}
+                labelFormatter={(ts) => formatTime(ts as number, windowSeconds)}
+                formatter={(value) => [`${Number(value).toFixed(2)}${unit}`, label]}
+              />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={color}
+                strokeWidth={2}
+                fill={`url(#gradient-${label.replace(/\s+/g, '-')})`}
+                dot={false}
+                activeDot={{ r: 4, fill: color }}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
@@ -119,6 +256,7 @@ function App() {
     http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
   })
   const [metricsLoaded, setMetricsLoaded] = useState(false)
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>(TIME_WINDOWS[0])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -210,7 +348,7 @@ function App() {
         }
 
         setMetricsHistory((prev) => {
-          const maxDataPoints = 30 // Keep last 30 data points (~30 seconds of history)
+          const maxDataPoints = timeWindow.dataPoints
           const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
           const newContainers = { ...prev.containers }
 
@@ -265,7 +403,7 @@ function App() {
 
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
-      // Clear history when switching projects or tabs
+      // Clear history when switching projects, tabs, or time window
       setMetricsHistory({
         timestamps: [],
         containers: {},
@@ -273,10 +411,10 @@ function App() {
       })
       setMetricsLoaded(false)
       fetchMetrics()
-      const interval = setInterval(fetchMetrics, 1000) // Fetch every second
+      const interval = setInterval(fetchMetrics, timeWindow.intervalMs)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name, activeTab])
+  }, [selectedProject?.name, activeTab, timeWindow])
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -793,175 +931,109 @@ function App() {
                   </form>
                 </div>
               ) : activeTab === 'metrics' ? (
-                <div className="flex-1 overflow-auto p-4">
-                  {!metricsLoaded ? (
-                    <div className="text-gray-500 text-center py-8">
-                      <Loader2 className="w-12 h-12 mx-auto mb-3 opacity-50 animate-spin" />
-                      <p>Loading metrics...</p>
+                <div className="flex-1 flex flex-col">
+                  {/* Time Window Selector */}
+                  <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
+                    <span className="text-sm text-gray-400">Time Range:</span>
+                    <div className="flex gap-1">
+                      {TIME_WINDOWS.map((tw) => (
+                        <button
+                          key={tw.label}
+                          onClick={() => setTimeWindow(tw)}
+                          className={`px-3 py-1 text-sm rounded transition-colors ${
+                            timeWindow.value === tw.value
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                        >
+                          {tw.label}
+                        </button>
+                      ))}
                     </div>
-                  ) : Object.keys(metricsHistory.containers).length === 0 ? (
-                    <div className="text-gray-500 text-center py-8">
-                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p>No containers running</p>
-                      <p className="text-sm mt-2">Start the project to see metrics</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {Object.entries(metricsHistory.containers).map(([containerName, data]) => (
-                        <div key={containerName} className="bg-gray-800 rounded-lg p-4">
+                    <span className="text-xs text-gray-500 ml-auto">
+                      {metricsHistory.timestamps.length} data points
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-auto p-4">
+                    {!metricsLoaded ? (
+                      <div className="text-gray-500 text-center py-8">
+                        <Loader2 className="w-12 h-12 mx-auto mb-3 opacity-50 animate-spin" />
+                        <p>Loading metrics...</p>
+                      </div>
+                    ) : Object.keys(metricsHistory.containers).length === 0 ? (
+                      <div className="text-gray-500 text-center py-8">
+                        <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No containers running</p>
+                        <p className="text-sm mt-2">Start the project to see metrics</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {Object.entries(metricsHistory.containers).map(([containerName, data]) => (
+                          <div key={containerName} className="bg-gray-800 rounded-lg p-4">
+                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                              <HardDrive className="w-5 h-5 text-blue-400" />
+                              {containerName}
+                            </h3>
+
+                            <div className="grid grid-cols-2 gap-6">
+                              <TimeSeriesChart
+                                data={data.cpu}
+                                timestamps={metricsHistory.timestamps}
+                                color="#3b82f6"
+                                maxValue={100}
+                                label="CPU Usage"
+                                unit="%"
+                                windowSeconds={timeWindow.value}
+                              />
+                              <TimeSeriesChart
+                                data={data.memory}
+                                timestamps={metricsHistory.timestamps}
+                                color="#22c55e"
+                                maxValue={100}
+                                label="Memory Usage"
+                                unit="%"
+                                windowSeconds={timeWindow.value}
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* HTTP Request Metrics */}
+                        <div className="bg-gray-800 rounded-lg p-4">
                           <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                            <HardDrive className="w-5 h-5 text-blue-400" />
-                            {containerName}
+                            <Network className="w-5 h-5 text-purple-400" />
+                            HTTP Requests
                           </h3>
 
-                          <div className="grid grid-cols-2 gap-6">
-                            {/* CPU Usage */}
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400 flex items-center gap-2">
-                                  <Cpu className="w-4 h-4" />
-                                  CPU Usage
-                                </span>
-                                <span className="text-sm font-mono">
-                                  {data.cpu.length > 0 ? data.cpu[data.cpu.length - 1].toFixed(1) : 0}%
-                                </span>
-                              </div>
-                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
-                                {data.cpu.map((value, i) => (
-                                  <div
-                                    key={i}
-                                    className="flex-1 bg-blue-500 rounded-sm transition-all"
-                                    style={{ height: `${Math.min(value, 100)}%` }}
-                                  />
-                                ))}
-                                {data.cpu.length === 0 && (
-                                  <div className="flex-1 text-center text-gray-600 text-sm">No data</div>
-                                )}
-                              </div>
+                          {metricsHistory.http.requestsPerSecond.length === 0 ? (
+                            <p className="text-sm text-gray-500">
+                              No HTTP metrics available. Metrics are collected from Spring Boot Actuator on port 8080.
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-6">
+                              <TimeSeriesChart
+                                data={metricsHistory.http.requestsPerSecond}
+                                timestamps={metricsHistory.timestamps}
+                                color="#a855f7"
+                                label="Requests/sec"
+                                unit=""
+                                windowSeconds={timeWindow.value}
+                              />
+                              <TimeSeriesChart
+                                data={metricsHistory.http.avgResponseTime}
+                                timestamps={metricsHistory.timestamps}
+                                color="#eab308"
+                                label="Avg Response Time"
+                                unit="ms"
+                                windowSeconds={timeWindow.value}
+                              />
                             </div>
-
-                            {/* Memory Usage */}
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400 flex items-center gap-2">
-                                  <HardDrive className="w-4 h-4" />
-                                  Memory Usage
-                                </span>
-                                <span className="text-sm font-mono">
-                                  {data.memory.length > 0 ? data.memory[data.memory.length - 1].toFixed(1) : 0}%
-                                </span>
-                              </div>
-                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
-                                {data.memory.map((value, i) => (
-                                  <div
-                                    key={i}
-                                    className="flex-1 bg-green-500 rounded-sm transition-all"
-                                    style={{ height: `${Math.min(value, 100)}%` }}
-                                  />
-                                ))}
-                                {data.memory.length === 0 && (
-                                  <div className="flex-1 text-center text-gray-600 text-sm">No data</div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Progress bars for current values */}
-                          <div className="mt-4 space-y-3">
-                            <div>
-                              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>CPU</span>
-                                <span>{data.cpu.length > 0 ? data.cpu[data.cpu.length - 1].toFixed(2) : 0}%</span>
-                              </div>
-                              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-blue-500 transition-all duration-300"
-                                  style={{ width: `${Math.min(data.cpu[data.cpu.length - 1] || 0, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Memory</span>
-                                <span>{data.memory.length > 0 ? data.memory[data.memory.length - 1].toFixed(2) : 0}%</span>
-                              </div>
-                              <div className="h-2 bg-gray-900 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-green-500 transition-all duration-300"
-                                  style={{ width: `${Math.min(data.memory[data.memory.length - 1] || 0, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
+                          )}
                         </div>
-                      ))}
-
-                      {/* HTTP Request Metrics */}
-                      <div className="bg-gray-800 rounded-lg p-4">
-                        <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                          <Network className="w-5 h-5 text-purple-400" />
-                          HTTP Requests
-                        </h3>
-
-                        {metricsHistory.http.requestsPerSecond.length === 0 ? (
-                          <p className="text-sm text-gray-500">
-                            No HTTP metrics available. Metrics are collected from Spring Boot Actuator on port 8080.
-                          </p>
-                        ) : (
-                          <div className="grid grid-cols-2 gap-6">
-                            {/* Requests per Second */}
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400">Requests/sec</span>
-                                <span className="text-sm font-mono">
-                                  {metricsHistory.http.requestsPerSecond.length > 0
-                                    ? metricsHistory.http.requestsPerSecond[metricsHistory.http.requestsPerSecond.length - 1]
-                                    : 0}
-                                </span>
-                              </div>
-                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
-                                {metricsHistory.http.requestsPerSecond.map((value, i) => {
-                                  const maxRps = Math.max(...metricsHistory.http.requestsPerSecond, 1)
-                                  return (
-                                    <div
-                                      key={i}
-                                      className="flex-1 bg-purple-500 rounded-sm transition-all"
-                                      style={{ height: `${(value / maxRps) * 100}%` }}
-                                    />
-                                  )
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Average Response Time */}
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm text-gray-400">Avg Response Time</span>
-                                <span className="text-sm font-mono">
-                                  {metricsHistory.http.avgResponseTime.length > 0
-                                    ? metricsHistory.http.avgResponseTime[metricsHistory.http.avgResponseTime.length - 1].toFixed(1)
-                                    : 0}
-                                  ms
-                                </span>
-                              </div>
-                              <div className="h-20 bg-gray-900 rounded-lg p-2 flex items-end gap-0.5">
-                                {metricsHistory.http.avgResponseTime.map((value, i) => {
-                                  const maxTime = Math.max(...metricsHistory.http.avgResponseTime, 1)
-                                  return (
-                                    <div
-                                      key={i}
-                                      className="flex-1 bg-yellow-500 rounded-sm transition-all"
-                                      style={{ height: `${(value / maxTime) * 100}%` }}
-                                    />
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ) : null}
             </>
