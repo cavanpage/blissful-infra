@@ -1,12 +1,18 @@
 package com.blissful.controller
 
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.actuate.health.Health
+import org.springframework.boot.actuate.health.HealthIndicator
+import org.springframework.boot.actuate.health.Status
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import javax.sql.DataSource
 
 data class HealthResponse(
     val status: String,
-    val timestamp: String
+    val timestamp: String,
+    val details: Map<String, Any> = emptyMap()
 )
 
 data class ReadyResponse(
@@ -20,11 +26,16 @@ data class LiveResponse(
 @RestController
 class HealthController {
 
+    @Autowired
+    private lateinit var dataSource: DataSource
+
     @GetMapping("/health")
     fun health(): HealthResponse {
+        val status = "healthy"
         return HealthResponse(
-            status = "healthy",
-            timestamp = Instant.now().toString()
+            status = status,
+            timestamp = Instant.now().toString(),
+            details = emptyMap()
         )
     }
 

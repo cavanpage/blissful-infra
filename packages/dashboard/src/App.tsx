@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
+} from 'recharts'
+import {
   Play,
   Square,
   RefreshCw,
@@ -18,6 +27,12 @@ import {
   Copy,
   Check,
   X,
+  HardDrive,
+  Network,
+  BarChart3,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
 } from 'lucide-react'
 
 interface Project {
@@ -68,6 +83,185 @@ interface ModelsResponse {
   error?: string
 }
 
+interface ContainerMetrics {
+  name: string
+  cpuPercent: number
+  memoryUsage: number
+  memoryLimit: number
+  memoryPercent: number
+  networkRx: number
+  networkTx: number
+}
+
+interface HttpMetrics {
+  totalRequests: number
+  requestsPerSecond: number
+  avgResponseTime: number
+}
+
+interface MetricsResponse {
+  containers: ContainerMetrics[]
+  httpMetrics?: HttpMetrics
+  timestamp: number
+}
+
+interface MetricsHistory {
+  timestamps: number[]
+  containers: Record<string, { cpu: number[]; memory: number[] }>
+  http: {
+    requestsPerSecond: number[]
+    avgResponseTime: number[]
+    lastTotalRequests: number
+  }
+}
+
+interface ServiceHealth {
+  name: string
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  responseTimeMs?: number
+  lastChecked: number
+  details?: string
+}
+
+interface HealthResponse {
+  services: ServiceHealth[]
+  timestamp: number
+}
+
+interface HealthHistory {
+  timestamps: number[]
+  services: Record<string, ('healthy' | 'unhealthy' | 'unknown')[]>
+}
+
+// Time window options
+const TIME_WINDOWS = [
+  { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
+  { label: '5m', value: 300, dataPoints: 60, intervalMs: 5000 },
+  { label: '15m', value: 900, dataPoints: 90, intervalMs: 10000 },
+  { label: '1h', value: 3600, dataPoints: 120, intervalMs: 30000 },
+  { label: '24h', value: 86400, dataPoints: 144, intervalMs: 600000 },
+] as const
+
+type TimeWindow = (typeof TIME_WINDOWS)[number]
+
+// Format timestamp for x-axis display
+function formatTime(timestamp: number, windowSeconds: number): string {
+  const date = new Date(timestamp)
+  if (windowSeconds <= 300) {
+    // 5 minutes or less: show HH:MM:SS
+    return date.toLocaleTimeString('en-US', { hour12: false })
+  } else if (windowSeconds <= 3600) {
+    // 1 hour or less: show HH:MM
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  } else {
+    // More than 1 hour: show MM/DD HH:MM
+    return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' ' +
+      date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+}
+
+// Time Series Chart Component using Recharts
+function TimeSeriesChart({
+  data,
+  timestamps,
+  color,
+  maxValue,
+  label,
+  unit = '%',
+  windowSeconds = 60,
+}: {
+  data: number[]
+  timestamps: number[]
+  color: string
+  maxValue?: number
+  label: string
+  unit?: string
+  windowSeconds?: number
+}) {
+  const currentValue = data.length > 0 ? data[data.length - 1] : 0
+
+  // Calculate time domain - show full window, not just collected data
+  const now = Date.now()
+  const windowStart = now - windowSeconds * 1000
+  const timeDomain: [number, number] = [windowStart, now]
+
+  // Convert to recharts format
+  const chartData = data.map((value, i) => ({
+    time: timestamps[i] || Date.now(),
+    value,
+  }))
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-gray-400">{label}</span>
+        <span className="text-sm font-mono">
+          {currentValue.toFixed(1)}{unit}
+        </span>
+      </div>
+      <div className="bg-gray-900 rounded-lg overflow-hidden h-32">
+        {chartData.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-gray-600 text-sm">
+            No data
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+              <defs>
+                <linearGradient id={`gradient-${label.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis
+                dataKey="time"
+                type="number"
+                domain={timeDomain}
+                tickFormatter={(ts) => formatTime(ts, windowSeconds)}
+                stroke="#6b7280"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                tickCount={5}
+              />
+              <YAxis
+                domain={maxValue !== undefined ? [0, maxValue] : ['auto', 'auto']}
+                stroke="#6b7280"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                width={40}
+                tickFormatter={(v) => `${v}${unit}`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1f2937',
+                  border: '1px solid #374151',
+                  borderRadius: '0.5rem',
+                  fontSize: '12px',
+                }}
+                labelFormatter={(ts) => formatTime(ts as number, windowSeconds)}
+                formatter={(value) => [`${Number(value).toFixed(2)}${unit}`, label]}
+              />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={color}
+                strokeWidth={2}
+                fill={`url(#gradient-${label.replace(/\s+/g, '-')})`}
+                dot={false}
+                activeDot={{ r: 4, fill: color }}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
@@ -75,8 +269,17 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
+  const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
+    timestamps: [],
+    containers: {},
+    http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
+  })
+  const [metricsLoaded, setMetricsLoaded] = useState(false)
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>(TIME_WINDOWS[0])
+  const [_healthHistory, setHealthHistory] = useState<HealthHistory>({ timestamps: [], services: {} })
+  const [currentHealth, setCurrentHealth] = useState<ServiceHealth[]>([])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -154,6 +357,89 @@ function App() {
     }
   }
 
+  const fetchHealth = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/health`)
+      if (res.ok) {
+        const data: HealthResponse = await res.json()
+        setCurrentHealth(data.services)
+
+        // Update health history
+        setHealthHistory((prev) => {
+          const maxDataPoints = timeWindow.dataPoints
+          const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
+          const newServices = { ...prev.services }
+
+          for (const service of data.services) {
+            if (!newServices[service.name]) {
+              newServices[service.name] = []
+            }
+            newServices[service.name] = [
+              ...newServices[service.name],
+              service.status,
+            ].slice(-maxDataPoints)
+          }
+
+          return { timestamps: newTimestamps, services: newServices }
+        })
+      }
+    } catch (e) {
+      console.error('Failed to fetch health:', e)
+    }
+  }
+
+  const fetchMetrics = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/metrics`)
+      if (res.ok) {
+        const data: MetricsResponse = await res.json()
+        setMetricsLoaded(true)
+
+        if (data.containers.length === 0) {
+          // No containers running - keep metricsLoaded true but containers empty
+          return
+        }
+
+        setMetricsHistory((prev) => {
+          const maxDataPoints = timeWindow.dataPoints
+          const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
+          const newContainers = { ...prev.containers }
+
+          for (const container of data.containers) {
+            if (!newContainers[container.name]) {
+              newContainers[container.name] = { cpu: [], memory: [] }
+            }
+            newContainers[container.name].cpu = [
+              ...newContainers[container.name].cpu,
+              container.cpuPercent,
+            ].slice(-maxDataPoints)
+            newContainers[container.name].memory = [
+              ...newContainers[container.name].memory,
+              container.memoryPercent,
+            ].slice(-maxDataPoints)
+          }
+
+          // Calculate HTTP metrics (requests per second from delta)
+          const newHttp = { ...prev.http }
+          if (data.httpMetrics) {
+            const deltaRequests = data.httpMetrics.totalRequests - prev.http.lastTotalRequests
+            const rps = prev.http.lastTotalRequests > 0 ? Math.max(0, deltaRequests) : 0
+            newHttp.requestsPerSecond = [...prev.http.requestsPerSecond, rps].slice(-maxDataPoints)
+            newHttp.avgResponseTime = [...prev.http.avgResponseTime, data.httpMetrics.avgResponseTime].slice(-maxDataPoints)
+            newHttp.lastTotalRequests = data.httpMetrics.totalRequests
+          }
+
+          return { timestamps: newTimestamps, containers: newContainers, http: newHttp }
+        })
+      }
+    } catch (e) {
+      console.error('Failed to fetch metrics:', e)
+      setMetricsLoaded(true) // Mark as loaded even on error
+    }
+  }
+
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
@@ -169,6 +455,32 @@ function App() {
       return () => clearInterval(interval)
     }
   }, [selectedProject?.name])
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'metrics') {
+      // Clear history when switching projects, tabs, or time window
+      setMetricsHistory({
+        timestamps: [],
+        containers: {},
+        http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
+      })
+      setHealthHistory({ timestamps: [], services: {} })
+      setCurrentHealth([])
+      setMetricsLoaded(false)
+
+      // Fetch metrics and health
+      fetchMetrics()
+      fetchHealth()
+
+      const metricsInterval = setInterval(fetchMetrics, timeWindow.intervalMs)
+      const healthInterval = setInterval(fetchHealth, 5000) // Check health every 5 seconds
+
+      return () => {
+        clearInterval(metricsInterval)
+        clearInterval(healthInterval)
+      }
+    }
+  }, [selectedProject?.name, activeTab, timeWindow])
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -542,6 +854,17 @@ function App() {
                   <MessageSquare className="w-4 h-4" />
                   Agent
                 </button>
+                <button
+                  onClick={() => setActiveTab('metrics')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'metrics'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Metrics
+                </button>
               </div>
 
               {/* Tab Content */}
@@ -571,7 +894,7 @@ function App() {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : activeTab === 'chat' ? (
                 <div className="flex-1 flex flex-col">
                   {/* Model Selector */}
                   <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
@@ -673,7 +996,157 @@ function App() {
                     </div>
                   </form>
                 </div>
-              )}
+              ) : activeTab === 'metrics' ? (
+                <div className="flex-1 flex flex-col">
+                  {/* Time Window Selector */}
+                  <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
+                    <span className="text-sm text-gray-400">Time Range:</span>
+                    <div className="flex gap-1">
+                      {TIME_WINDOWS.map((tw) => (
+                        <button
+                          key={tw.label}
+                          onClick={() => setTimeWindow(tw)}
+                          className={`px-3 py-1 text-sm rounded transition-colors ${
+                            timeWindow.value === tw.value
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                        >
+                          {tw.label}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs text-gray-500 ml-auto">
+                      {metricsHistory.timestamps.length} data points
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-auto p-4">
+                    {!metricsLoaded ? (
+                      <div className="text-gray-500 text-center py-8">
+                        <Loader2 className="w-12 h-12 mx-auto mb-3 opacity-50 animate-spin" />
+                        <p>Loading metrics...</p>
+                      </div>
+                    ) : Object.keys(metricsHistory.containers).length === 0 ? (
+                      <div className="text-gray-500 text-center py-8">
+                        <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No containers running</p>
+                        <p className="text-sm mt-2">Start the project to see metrics</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Service Health Status */}
+                        {currentHealth.length > 0 && (
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                              <Activity className="w-5 h-5 text-green-400" />
+                              Service Health
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                              {currentHealth.map((service) => (
+                                <div
+                                  key={service.name}
+                                  className={`p-3 rounded-lg border-2 ${
+                                    service.status === 'healthy'
+                                      ? 'border-green-500 bg-green-500/10'
+                                      : service.status === 'unhealthy'
+                                      ? 'border-red-500 bg-red-500/10'
+                                      : 'border-gray-600 bg-gray-700/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {service.status === 'healthy' ? (
+                                      <CheckCircle className="w-4 h-4 text-green-400" />
+                                    ) : service.status === 'unhealthy' ? (
+                                      <XCircle className="w-4 h-4 text-red-400" />
+                                    ) : (
+                                      <HelpCircle className="w-4 h-4 text-gray-400" />
+                                    )}
+                                    <span className="font-medium text-sm capitalize">{service.name}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-400 space-y-1">
+                                    {service.responseTimeMs !== undefined && (
+                                      <div>Response: {service.responseTimeMs}ms</div>
+                                    )}
+                                    {service.details && (
+                                      <div className="truncate" title={service.details}>
+                                        {service.details}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {Object.entries(metricsHistory.containers).map(([containerName, data]) => (
+                          <div key={containerName} className="bg-gray-800 rounded-lg p-4">
+                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                              <HardDrive className="w-5 h-5 text-blue-400" />
+                              {containerName}
+                            </h3>
+
+                            <div className="grid grid-cols-2 gap-6">
+                              <TimeSeriesChart
+                                data={data.cpu}
+                                timestamps={metricsHistory.timestamps}
+                                color="#3b82f6"
+                                maxValue={100}
+                                label="CPU Usage"
+                                unit="%"
+                                windowSeconds={timeWindow.value}
+                              />
+                              <TimeSeriesChart
+                                data={data.memory}
+                                timestamps={metricsHistory.timestamps}
+                                color="#22c55e"
+                                maxValue={100}
+                                label="Memory Usage"
+                                unit="%"
+                                windowSeconds={timeWindow.value}
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* HTTP Request Metrics */}
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                            <Network className="w-5 h-5 text-purple-400" />
+                            HTTP Requests
+                          </h3>
+
+                          {metricsHistory.http.requestsPerSecond.length === 0 ? (
+                            <p className="text-sm text-gray-500">
+                              No HTTP metrics available. Metrics are collected from Spring Boot Actuator on port 8080.
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-6">
+                              <TimeSeriesChart
+                                data={metricsHistory.http.requestsPerSecond}
+                                timestamps={metricsHistory.timestamps}
+                                color="#a855f7"
+                                label="Requests/sec"
+                                unit=""
+                                windowSeconds={timeWindow.value}
+                              />
+                              <TimeSeriesChart
+                                data={metricsHistory.http.avgResponseTime}
+                                timestamps={metricsHistory.timestamps}
+                                color="#eab308"
+                                label="Avg Response Time"
+                                unit="ms"
+                                windowSeconds={timeWindow.value}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">

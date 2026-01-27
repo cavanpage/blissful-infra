@@ -29,6 +29,41 @@ interface Service {
   port?: number;
 }
 
+interface ContainerMetrics {
+  name: string;
+  cpuPercent: number;
+  memoryUsage: number;
+  memoryLimit: number;
+  memoryPercent: number;
+  networkRx: number;
+  networkTx: number;
+}
+
+interface ProjectMetrics {
+  containers: ContainerMetrics[];
+  httpMetrics?: HttpMetrics;
+  timestamp: number;
+}
+
+interface HttpMetrics {
+  totalRequests: number;
+  requestsPerSecond: number;
+  avgResponseTime: number;
+}
+
+interface ServiceHealth {
+  name: string;
+  status: "healthy" | "unhealthy" | "unknown";
+  responseTimeMs?: number;
+  lastChecked: number;
+  details?: string;
+}
+
+interface HealthResponse {
+  services: ServiceHealth[];
+  timestamp: number;
+}
+
 interface ProjectStatus {
   name: string;
   path: string;
@@ -202,6 +237,28 @@ export function createApiServer(workingDir: string, port = 3002) {
           frontends: ["react-vite", "nextjs"],
           databases: ["none", "postgres", "redis", "postgres-redis"],
         }));
+        return;
+      }
+
+      // GET /api/projects/:name/metrics - Get container metrics
+      const metricsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics$/);
+      if (req.method === "GET" && metricsMatch) {
+        const projectName = metricsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const metrics = await getContainerMetrics(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(metrics));
+        return;
+      }
+
+      // GET /api/projects/:name/health - Get service health status
+      const healthMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/health$/);
+      if (req.method === "GET" && healthMatch) {
+        const projectName = healthMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const health = await checkServiceHealth(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(health));
         return;
       }
 
@@ -451,6 +508,247 @@ async function createProject(
       error: errorMessage,
     };
   }
+}
+
+async function getContainerMetrics(projectDir: string): Promise<ProjectMetrics> {
+  const containers: ContainerMetrics[] = [];
+
+  try {
+    // Get container IDs for this project
+    const { stdout: psOutput } = await execa(
+      "docker",
+      ["compose", "ps", "-q"],
+      { cwd: projectDir, reject: false }
+    );
+
+    const containerIds = psOutput.trim().split("\n").filter(Boolean);
+
+    if (containerIds.length === 0) {
+      return { containers: [], timestamp: Date.now() };
+    }
+
+    // Get stats for all containers (--no-stream returns single snapshot)
+    const { stdout: statsOutput } = await execa(
+      "docker",
+      ["stats", "--no-stream", "--format", "json", ...containerIds],
+      { reject: false }
+    );
+
+    // Parse each line of JSON output
+    const lines = statsOutput.trim().split("\n").filter(Boolean);
+    for (const line of lines) {
+      try {
+        const stat = JSON.parse(line);
+
+        // Parse CPU percentage (e.g., "0.50%")
+        const cpuPercent = parseFloat(stat.CPUPerc?.replace("%", "") || "0");
+
+        // Parse memory usage (e.g., "50.5MiB / 1GiB")
+        const memParts = stat.MemUsage?.split(" / ") || ["0", "0"];
+        const memoryUsage = parseMemoryValue(memParts[0]);
+        const memoryLimit = parseMemoryValue(memParts[1]);
+        const memoryPercent = parseFloat(stat.MemPerc?.replace("%", "") || "0");
+
+        // Parse network I/O (e.g., "1.5kB / 2.3kB")
+        const netParts = stat.NetIO?.split(" / ") || ["0", "0"];
+        const networkRx = parseMemoryValue(netParts[0]);
+        const networkTx = parseMemoryValue(netParts[1]);
+
+        containers.push({
+          name: stat.Name || "unknown",
+          cpuPercent,
+          memoryUsage,
+          memoryLimit,
+          memoryPercent,
+          networkRx,
+          networkTx,
+        });
+      } catch {
+        // Skip invalid JSON lines
+      }
+    }
+  } catch {
+    // Docker stats failed
+  }
+
+  // Try to fetch HTTP metrics from Spring Boot Actuator
+  const httpMetrics = await fetchActuatorMetrics();
+
+  return { containers, httpMetrics, timestamp: Date.now() };
+}
+
+async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
+  const services: ServiceHealth[] = [];
+  const config = await loadConfig(projectDir);
+
+  // Define health check endpoints based on project config
+  const healthChecks: Array<{ name: string; url: string; port: number }> = [];
+
+  // Backend health check (Spring Boot Actuator)
+  if (config?.backend === "spring-boot") {
+    healthChecks.push({ name: "backend", url: "http://localhost:8080/actuator/health", port: 8080 });
+  } else if (config?.backend === "fastapi") {
+    healthChecks.push({ name: "backend", url: "http://localhost:8000/health", port: 8000 });
+  } else if (config?.backend === "express") {
+    healthChecks.push({ name: "backend", url: "http://localhost:3001/health", port: 3001 });
+  } else if (config?.backend === "go-chi") {
+    healthChecks.push({ name: "backend", url: "http://localhost:8080/health", port: 8080 });
+  }
+
+  // Frontend health check
+  if (config?.frontend) {
+    healthChecks.push({ name: "frontend", url: "http://localhost:3000", port: 3000 });
+  }
+
+  // Database health checks
+  if (config?.database === "postgres" || config?.database === "postgres-redis") {
+    // PostgreSQL - check via docker exec
+    healthChecks.push({ name: "postgres", url: "", port: 5432 });
+  }
+  if (config?.database === "redis" || config?.database === "postgres-redis") {
+    healthChecks.push({ name: "redis", url: "", port: 6379 });
+  }
+
+  // Kafka health check
+  if (config?.type !== "frontend") {
+    healthChecks.push({ name: "kafka", url: "", port: 9092 });
+  }
+
+  // Check each service
+  for (const check of healthChecks) {
+    const startTime = Date.now();
+    let status: "healthy" | "unhealthy" | "unknown" = "unknown";
+    let responseTimeMs: number | undefined;
+    let details: string | undefined;
+
+    try {
+      if (check.url) {
+        // HTTP health check
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(check.url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        responseTimeMs = Date.now() - startTime;
+
+        if (response.ok) {
+          status = "healthy";
+          // Try to parse health details from Spring Boot
+          if (check.name === "backend" && config?.backend === "spring-boot") {
+            try {
+              const data = await response.json() as { status?: string };
+              details = data.status || "UP";
+            } catch {
+              details = "UP";
+            }
+          }
+        } else {
+          status = "unhealthy";
+          details = `HTTP ${response.status}`;
+        }
+      } else {
+        // Port-based health check (for databases, kafka)
+        const { stdout } = await execa(
+          "docker",
+          ["compose", "ps", "--format", "json"],
+          { cwd: projectDir, reject: false }
+        );
+
+        const lines = stdout.trim().split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const container = JSON.parse(line);
+            const serviceName = container.Service || container.Name || "";
+            if (serviceName.toLowerCase().includes(check.name)) {
+              const state = container.State?.toLowerCase() || "";
+              const health = container.Health?.toLowerCase() || "";
+
+              if (state === "running") {
+                status = health === "healthy" || !health ? "healthy" : "unhealthy";
+              } else {
+                status = "unhealthy";
+              }
+              details = state;
+              break;
+            }
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+        responseTimeMs = Date.now() - startTime;
+      }
+    } catch (error) {
+      responseTimeMs = Date.now() - startTime;
+      status = "unhealthy";
+      details = error instanceof Error ? error.message : "Connection failed";
+    }
+
+    services.push({
+      name: check.name,
+      status,
+      responseTimeMs,
+      lastChecked: Date.now(),
+      details,
+    });
+  }
+
+  return { services, timestamp: Date.now() };
+}
+
+async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {
+  try {
+    // Try to fetch from Spring Boot Actuator on port 8080
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1000);
+
+    const response = await fetch("http://localhost:8080/actuator/metrics/http.server.requests", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return undefined;
+
+    const data = await response.json() as {
+      measurements?: Array<{ statistic: string; value: number }>;
+    };
+
+    // Parse Micrometer metrics format
+    let totalRequests = 0;
+    let totalTime = 0;
+
+    for (const measurement of data.measurements || []) {
+      if (measurement.statistic === "COUNT") {
+        totalRequests = measurement.value;
+      } else if (measurement.statistic === "TOTAL_TIME") {
+        totalTime = measurement.value;
+      }
+    }
+
+    const avgResponseTime = totalRequests > 0 ? (totalTime / totalRequests) * 1000 : 0; // Convert to ms
+
+    return {
+      totalRequests,
+      requestsPerSecond: 0, // Will be calculated on frontend from delta
+      avgResponseTime,
+    };
+  } catch {
+    // Actuator not available or error
+    return undefined;
+  }
+}
+
+function parseMemoryValue(value: string): number {
+  if (!value) return 0;
+  const num = parseFloat(value);
+  if (isNaN(num)) return 0;
+
+  const upper = value.toUpperCase();
+  if (upper.includes("GIB") || upper.includes("GB")) return num * 1024 * 1024 * 1024;
+  if (upper.includes("MIB") || upper.includes("MB")) return num * 1024 * 1024;
+  if (upper.includes("KIB") || upper.includes("KB")) return num * 1024;
+  if (upper.includes("B")) return num;
+  return num;
 }
 
 async function handleAgentQuery(
