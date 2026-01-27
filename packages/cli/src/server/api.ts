@@ -51,6 +51,19 @@ interface HttpMetrics {
   avgResponseTime: number;
 }
 
+interface ServiceHealth {
+  name: string;
+  status: "healthy" | "unhealthy" | "unknown";
+  responseTimeMs?: number;
+  lastChecked: number;
+  details?: string;
+}
+
+interface HealthResponse {
+  services: ServiceHealth[];
+  timestamp: number;
+}
+
 interface ProjectStatus {
   name: string;
   path: string;
@@ -235,6 +248,17 @@ export function createApiServer(workingDir: string, port = 3002) {
         const metrics = await getContainerMetrics(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(metrics));
+        return;
+      }
+
+      // GET /api/projects/:name/health - Get service health status
+      const healthMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/health$/);
+      if (req.method === "GET" && healthMatch) {
+        const projectName = healthMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const health = await checkServiceHealth(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(health));
         return;
       }
 
@@ -551,6 +575,125 @@ async function getContainerMetrics(projectDir: string): Promise<ProjectMetrics> 
   const httpMetrics = await fetchActuatorMetrics();
 
   return { containers, httpMetrics, timestamp: Date.now() };
+}
+
+async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
+  const services: ServiceHealth[] = [];
+  const config = await loadConfig(projectDir);
+
+  // Define health check endpoints based on project config
+  const healthChecks: Array<{ name: string; url: string; port: number }> = [];
+
+  // Backend health check (Spring Boot Actuator)
+  if (config?.backend === "spring-boot") {
+    healthChecks.push({ name: "backend", url: "http://localhost:8080/actuator/health", port: 8080 });
+  } else if (config?.backend === "fastapi") {
+    healthChecks.push({ name: "backend", url: "http://localhost:8000/health", port: 8000 });
+  } else if (config?.backend === "express") {
+    healthChecks.push({ name: "backend", url: "http://localhost:3001/health", port: 3001 });
+  } else if (config?.backend === "go-chi") {
+    healthChecks.push({ name: "backend", url: "http://localhost:8080/health", port: 8080 });
+  }
+
+  // Frontend health check
+  if (config?.frontend) {
+    healthChecks.push({ name: "frontend", url: "http://localhost:3000", port: 3000 });
+  }
+
+  // Database health checks
+  if (config?.database === "postgres" || config?.database === "postgres-redis") {
+    // PostgreSQL - check via docker exec
+    healthChecks.push({ name: "postgres", url: "", port: 5432 });
+  }
+  if (config?.database === "redis" || config?.database === "postgres-redis") {
+    healthChecks.push({ name: "redis", url: "", port: 6379 });
+  }
+
+  // Kafka health check
+  if (config?.type !== "frontend") {
+    healthChecks.push({ name: "kafka", url: "", port: 9092 });
+  }
+
+  // Check each service
+  for (const check of healthChecks) {
+    const startTime = Date.now();
+    let status: "healthy" | "unhealthy" | "unknown" = "unknown";
+    let responseTimeMs: number | undefined;
+    let details: string | undefined;
+
+    try {
+      if (check.url) {
+        // HTTP health check
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(check.url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        responseTimeMs = Date.now() - startTime;
+
+        if (response.ok) {
+          status = "healthy";
+          // Try to parse health details from Spring Boot
+          if (check.name === "backend" && config?.backend === "spring-boot") {
+            try {
+              const data = await response.json() as { status?: string };
+              details = data.status || "UP";
+            } catch {
+              details = "UP";
+            }
+          }
+        } else {
+          status = "unhealthy";
+          details = `HTTP ${response.status}`;
+        }
+      } else {
+        // Port-based health check (for databases, kafka)
+        const { stdout } = await execa(
+          "docker",
+          ["compose", "ps", "--format", "json"],
+          { cwd: projectDir, reject: false }
+        );
+
+        const lines = stdout.trim().split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            const container = JSON.parse(line);
+            const serviceName = container.Service || container.Name || "";
+            if (serviceName.toLowerCase().includes(check.name)) {
+              const state = container.State?.toLowerCase() || "";
+              const health = container.Health?.toLowerCase() || "";
+
+              if (state === "running") {
+                status = health === "healthy" || !health ? "healthy" : "unhealthy";
+              } else {
+                status = "unhealthy";
+              }
+              details = state;
+              break;
+            }
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+        responseTimeMs = Date.now() - startTime;
+      }
+    } catch (error) {
+      responseTimeMs = Date.now() - startTime;
+      status = "unhealthy";
+      details = error instanceof Error ? error.message : "Connection failed";
+    }
+
+    services.push({
+      name: check.name,
+      status,
+      responseTimeMs,
+      lastChecked: Date.now(),
+      details,
+    });
+  }
+
+  return { services, timestamp: Date.now() };
 }
 
 async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {

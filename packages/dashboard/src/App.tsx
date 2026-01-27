@@ -30,6 +30,9 @@ import {
   HardDrive,
   Network,
   BarChart3,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
 } from 'lucide-react'
 
 interface Project {
@@ -110,6 +113,24 @@ interface MetricsHistory {
     avgResponseTime: number[]
     lastTotalRequests: number
   }
+}
+
+interface ServiceHealth {
+  name: string
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  responseTimeMs?: number
+  lastChecked: number
+  details?: string
+}
+
+interface HealthResponse {
+  services: ServiceHealth[]
+  timestamp: number
+}
+
+interface HealthHistory {
+  timestamps: number[]
+  services: Record<string, ('healthy' | 'unhealthy' | 'unknown')[]>
 }
 
 // Time window options
@@ -257,6 +278,8 @@ function App() {
   })
   const [metricsLoaded, setMetricsLoaded] = useState(false)
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(TIME_WINDOWS[0])
+  const [_healthHistory, setHealthHistory] = useState<HealthHistory>({ timestamps: [], services: {} })
+  const [currentHealth, setCurrentHealth] = useState<ServiceHealth[]>([])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [templates, setTemplates] = useState<Templates | null>(null)
   const [creating, setCreating] = useState(false)
@@ -331,6 +354,38 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to fetch logs:', e)
+    }
+  }
+
+  const fetchHealth = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/health`)
+      if (res.ok) {
+        const data: HealthResponse = await res.json()
+        setCurrentHealth(data.services)
+
+        // Update health history
+        setHealthHistory((prev) => {
+          const maxDataPoints = timeWindow.dataPoints
+          const newTimestamps = [...prev.timestamps, data.timestamp].slice(-maxDataPoints)
+          const newServices = { ...prev.services }
+
+          for (const service of data.services) {
+            if (!newServices[service.name]) {
+              newServices[service.name] = []
+            }
+            newServices[service.name] = [
+              ...newServices[service.name],
+              service.status,
+            ].slice(-maxDataPoints)
+          }
+
+          return { timestamps: newTimestamps, services: newServices }
+        })
+      }
+    } catch (e) {
+      console.error('Failed to fetch health:', e)
     }
   }
 
@@ -409,10 +464,21 @@ function App() {
         containers: {},
         http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
       })
+      setHealthHistory({ timestamps: [], services: {} })
+      setCurrentHealth([])
       setMetricsLoaded(false)
+
+      // Fetch metrics and health
       fetchMetrics()
-      const interval = setInterval(fetchMetrics, timeWindow.intervalMs)
-      return () => clearInterval(interval)
+      fetchHealth()
+
+      const metricsInterval = setInterval(fetchMetrics, timeWindow.intervalMs)
+      const healthInterval = setInterval(fetchHealth, 5000) // Check health every 5 seconds
+
+      return () => {
+        clearInterval(metricsInterval)
+        clearInterval(healthInterval)
+      }
     }
   }, [selectedProject?.name, activeTab, timeWindow])
 
@@ -969,6 +1035,51 @@ function App() {
                       </div>
                     ) : (
                       <div className="space-y-6">
+                        {/* Service Health Status */}
+                        {currentHealth.length > 0 && (
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                              <Activity className="w-5 h-5 text-green-400" />
+                              Service Health
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                              {currentHealth.map((service) => (
+                                <div
+                                  key={service.name}
+                                  className={`p-3 rounded-lg border-2 ${
+                                    service.status === 'healthy'
+                                      ? 'border-green-500 bg-green-500/10'
+                                      : service.status === 'unhealthy'
+                                      ? 'border-red-500 bg-red-500/10'
+                                      : 'border-gray-600 bg-gray-700/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {service.status === 'healthy' ? (
+                                      <CheckCircle className="w-4 h-4 text-green-400" />
+                                    ) : service.status === 'unhealthy' ? (
+                                      <XCircle className="w-4 h-4 text-red-400" />
+                                    ) : (
+                                      <HelpCircle className="w-4 h-4 text-gray-400" />
+                                    )}
+                                    <span className="font-medium text-sm capitalize">{service.name}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-400 space-y-1">
+                                    {service.responseTimeMs !== undefined && (
+                                      <div>Response: {service.responseTimeMs}ms</div>
+                                    )}
+                                    {service.details && (
+                                      <div className="truncate" title={service.details}>
+                                        {service.details}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {Object.entries(metricsHistory.containers).map(([containerName, data]) => (
                           <div key={containerName} className="bg-gray-800 rounded-lg p-4">
                             <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
