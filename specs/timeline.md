@@ -11,7 +11,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 0** | Specification | Product spec, agent spec, timeline | ✅ Complete |
 | **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | ✅ Complete |
 | **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ⏳ Planned |
-| **Phase 3** | Observability | Metrics, logs, dashboard v1 | 🔄 In Progress |
+| **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
 | **Phase 4** | Resilience | Chaos testing + FMEA | ⏳ Planned |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
 | **Phase 6** | Scale | More templates + cloud deploy | ⏳ Planned |
@@ -164,43 +164,103 @@ production   def456     ✓ Synced
 
 ---
 
-## Phase 3: Observability
+## Phase 3: Observability ✅
 
-**Goal:** See what's happening in your services with metrics, logs, and a basic dashboard.
+**Goal:** See what's happening in your local services with metrics, logs, and a basic dashboard.
 
-### 3.1 Metrics Collection
-- [ ] Prometheus deployment (local + cluster)
-- [ ] Application metrics endpoint (`/metrics`)
-- [ ] Standard metrics: request rate, latency histograms, error rate
-- [ ] JVM/runtime metrics (memory, GC, threads)
-- [ ] Kafka consumer lag metrics
-- [ ] `blissful-infra perf --env <env>` for on-demand metrics view
+### 3.1 Metrics Collection (Local)
+- [x] Docker container metrics collection (CPU, memory, network I/O)
+- [x] Spring Boot Actuator integration
+- [x] HTTP metrics: request rate, response time, error rate
+- [x] JVM/runtime metrics (memory, GC, threads)
+- [x] Time series visualization with configurable windows (1m, 5m, 15m, 1h, 24h)
+- [x] Real-time metrics polling
 
-### 3.2 Log Aggregation
-- [ ] Loki deployment
-- [ ] Log shipping from containers
-- [ ] Structured log parsing
-- [ ] Log correlation by trace ID
-- [ ] `blissful-infra logs --env <env>` with filtering
+### 3.2 Log Aggregation (Local)
+- [x] Docker log collection from containers
+- [x] Structured log parsing (JSON)
+- [x] Log viewer with real-time updates
+- [x] `blissful-infra logs` command with filtering
 
-### 3.3 Performance Testing
+### 3.3 Health Monitoring
+- [x] Service health checks (backend, frontend, databases, Kafka)
+- [x] Real-time health status display
+- [x] Health endpoint polling
+
+### 3.4 Dashboard v1 (Minimal)
+- [x] React + Vite + TypeScript scaffolding
+- [x] Environment status view (local)
+- [x] Service health status cards
+- [x] Time series metrics display (CPU, memory, request rate, response time)
+- [x] Log viewer with search and filtering
+- [x] Agent chat interface with markdown support
+- [x] `blissful-infra dashboard` command to open
+
+**Location:** `packages/dashboard/`
+
+**Note:** Phase 3 focuses on local observability only. Cluster-based observability (Prometheus, Loki) and performance testing (k6) moved to Phase 4.
+
+### Phase 3 Definition of Done
+```
+$ blissful-infra dashboard
+Opening http://localhost:3000...
+
+# Dashboard shows:
+# - Service health status (all services green)
+# - Time series charts for CPU, memory, request rate, response time
+# - Configurable time windows (1m to 24h)
+# - Real-time log viewer with search
+# - Agent chat with markdown-formatted responses
+```
+
+---
+
+## Phase 4: Resilience
+
+**Goal:** Validate service behavior under failure conditions with performance and chaos testing.
+
+### 4.1 Performance Testing
 - [ ] k6 test scripts in template
 - [ ] `blissful-infra perf --env <env>` command
 - [ ] Baseline thresholds (p95 < 200ms, error rate < 1%)
 - [ ] Results output (CLI table + JSON)
 - [ ] Integration with pipeline (fail on regression)
 
-### 3.4 Dashboard v1 (Minimal)
-- [ ] React + Vite + TypeScript + shadcn/ui scaffolding
-- [ ] Environment status view (local/staging/prod)
-- [ ] Current version per environment
-- [ ] Basic metrics display (request rate, error rate, latency)
-- [ ] Log viewer with search
-- [ ] `blissful-infra dashboard` to open
+### 4.2 Chaos Mesh Setup
+- [ ] Chaos Mesh deployment to cluster
+- [ ] CLI integration for chaos commands
+- [ ] Experiment templates per failure type
 
-**Note:** Keep dashboard minimal. CLI is primary interface. Dashboard is for visualization only.
+### 4.3 Failure Scenarios
+- [ ] `pod-kill` - random pod termination
+- [ ] `network-latency` - inject latency
+- [ ] `kafka-down` - Kafka unavailability
+- [ ] `db-latency` - database slowdown
+- [ ] `memory-pressure` - memory stress
+- [ ] Custom scenario support
 
-### Phase 3 Definition of Done
+### 4.4 FMEA Framework
+- [ ] Baseline capture before chaos
+- [ ] Automated validation during chaos
+- [ ] Recovery verification after chaos
+- [ ] SLO threshold configuration
+- [ ] `blissful-infra chaos --env <env>` command
+- [ ] `blissful-infra chaos --env <env> --scenario <s>` for specific tests
+
+### 4.5 Resilience Scorecard
+- [ ] Score calculation based on FMEA results
+- [ ] Gap identification (missing circuit breakers, etc.)
+- [ ] Recommendations for improvement
+- [ ] Score tracking over time
+
+### 4.6 Parallel Version Comparison
+- [ ] Deploy two versions side-by-side
+- [ ] Run identical load tests against both
+- [ ] Collect and compare metrics
+- [ ] `blissful-infra compare --old <ref> --new <ref>` command
+- [ ] Winner determination with confidence
+
+### Phase 4 Definition of Done
 ```
 $ blissful-infra perf --env staging
 
@@ -215,52 +275,6 @@ Results:
 
 ✓ All thresholds passed
 
-$ blissful-infra dashboard
-Opening http://localhost:3000...
-```
-
----
-
-## Phase 4: Resilience
-
-**Goal:** Validate service behavior under failure conditions.
-
-### 4.1 Chaos Mesh Setup
-- [ ] Chaos Mesh deployment to cluster
-- [ ] CLI integration for chaos commands
-- [ ] Experiment templates per failure type
-
-### 4.2 Failure Scenarios
-- [ ] `pod-kill` - random pod termination
-- [ ] `network-latency` - inject latency
-- [ ] `kafka-down` - Kafka unavailability
-- [ ] `db-latency` - database slowdown
-- [ ] `memory-pressure` - memory stress
-- [ ] Custom scenario support
-
-### 4.3 FMEA Framework
-- [ ] Baseline capture before chaos
-- [ ] Automated validation during chaos
-- [ ] Recovery verification after chaos
-- [ ] SLO threshold configuration
-- [ ] `blissful-infra chaos --env <env>` command
-- [ ] `blissful-infra chaos --env <env> --scenario <s>` for specific tests
-
-### 4.4 Resilience Scorecard
-- [ ] Score calculation based on FMEA results
-- [ ] Gap identification (missing circuit breakers, etc.)
-- [ ] Recommendations for improvement
-- [ ] Score tracking over time
-
-### 4.5 Parallel Version Comparison
-- [ ] Deploy two versions side-by-side
-- [ ] Run identical load tests against both
-- [ ] Collect and compare metrics
-- [ ] `blissful-infra compare --old <ref> --new <ref>` command
-- [ ] Winner determination with confidence
-
-### Phase 4 Definition of Done
-```
 $ blissful-infra chaos --env staging
 
 Running FMEA scenarios...
@@ -471,10 +485,12 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - [ ] Ephemeral environments work reliably
 
 ### Phase 3 (Observability)
-- [ ] Metrics available within 30s of request
-- [ ] Logs searchable across services
+- [x] Metrics available within 30s of request
+- [x] Logs searchable across services
+- [x] Dashboard displays real-time metrics and health status
 
 ### Phase 4 (Resilience)
+- [ ] Performance tests complete < 5 minutes
 - [ ] 5+ chaos scenarios working
 - [ ] Comparison tests complete < 15 minutes
 
