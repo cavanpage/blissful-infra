@@ -1,0 +1,23 @@
+severity:
+  - CRITICAL
+  - HIGH
+
+exit-code: 1
+
+ignore-unfixed: true
+
+timeout: 10m
+
+format: table
+
+vuln-type:
+  - os
+  - library
+
+scanners:
+  - vuln
+  - secret
+  - misconfig
+
+# Skip specific vulnerabilities if needed
+# ignorefile: .trivyignore

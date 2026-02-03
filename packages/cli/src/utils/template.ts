@@ -8,6 +8,10 @@ export interface TemplateVariables {
   projectName: string;
   database: string;
   deployTarget: string;
+  // Phase 2 additions
+  registryUrl?: string;
+  namespace?: string;
+  environment?: string;
 }
 
 export async function copyTemplate(
@@ -83,22 +87,29 @@ async function copyFile(
 function replaceVariables(content: string, variables: TemplateVariables): string {
   let result = content;
 
-  // Handle conditional blocks: {{#IF_POSTGRES}}...{{/IF_POSTGRES}}
+  // Database conditionals
   const hasPostgres = variables.database === "postgres" || variables.database === "postgres-redis";
+  const hasRedis = variables.database === "redis" || variables.database === "postgres-redis";
+  const noDatabase = variables.database === "none";
+
+  // Deploy target conditionals
+  const isKubernetes = variables.deployTarget === "kubernetes" || variables.deployTarget === "cloud";
+  const isCloud = variables.deployTarget === "cloud";
+  const isLocalOnly = variables.deployTarget === "local-only";
+
+  // Handle conditional blocks: {{#IF_POSTGRES}}...{{/IF_POSTGRES}}
   result = result.replace(
     /\{\{#IF_POSTGRES\}\}([\s\S]*?)\{\{\/IF_POSTGRES\}\}/g,
     hasPostgres ? "$1" : ""
   );
 
   // Handle conditional blocks: {{#IF_REDIS}}...{{/IF_REDIS}}
-  const hasRedis = variables.database === "redis" || variables.database === "postgres-redis";
   result = result.replace(
     /\{\{#IF_REDIS\}\}([\s\S]*?)\{\{\/IF_REDIS\}\}/g,
     hasRedis ? "$1" : ""
   );
 
   // Handle negative conditional: {{#IF_NO_DATABASE}}...{{/IF_NO_DATABASE}}
-  const noDatabase = variables.database === "none";
   result = result.replace(
     /\{\{#IF_NO_DATABASE\}\}([\s\S]*?)\{\{\/IF_NO_DATABASE\}\}/g,
     noDatabase ? "$1" : ""
@@ -110,11 +121,38 @@ function replaceVariables(content: string, variables: TemplateVariables): string
     hasPostgres ? "" : "$1"
   );
 
+  // Phase 2: Kubernetes/Cloud conditionals
+  // Handle {{#IF_KUBERNETES}}...{{/IF_KUBERNETES}} - true for kubernetes or cloud targets
+  result = result.replace(
+    /\{\{#IF_KUBERNETES\}\}([\s\S]*?)\{\{\/IF_KUBERNETES\}\}/g,
+    isKubernetes ? "$1" : ""
+  );
+
+  // Handle {{#IF_CLOUD}}...{{/IF_CLOUD}} - true only for cloud target
+  result = result.replace(
+    /\{\{#IF_CLOUD\}\}([\s\S]*?)\{\{\/IF_CLOUD\}\}/g,
+    isCloud ? "$1" : ""
+  );
+
+  // Handle {{#IF_LOCAL_ONLY}}...{{/IF_LOCAL_ONLY}} - true only for local-only target
+  result = result.replace(
+    /\{\{#IF_LOCAL_ONLY\}\}([\s\S]*?)\{\{\/IF_LOCAL_ONLY\}\}/g,
+    isLocalOnly ? "$1" : ""
+  );
+
   // Replace simple variables
-  return result
+  result = result
     .replace(/\{\{PROJECT_NAME\}\}/g, variables.projectName)
     .replace(/\{\{DATABASE\}\}/g, variables.database)
     .replace(/\{\{DEPLOY_TARGET\}\}/g, variables.deployTarget);
+
+  // Phase 2 variables (with defaults)
+  result = result
+    .replace(/\{\{REGISTRY_URL\}\}/g, variables.registryUrl || "localhost:5000")
+    .replace(/\{\{NAMESPACE\}\}/g, variables.namespace || variables.projectName)
+    .replace(/\{\{ENVIRONMENT\}\}/g, variables.environment || "local");
+
+  return result;
 }
 
 export function getAvailableTemplates(): string[] {

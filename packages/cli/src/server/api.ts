@@ -290,6 +290,122 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // Phase 2: Pipeline and Deployment Endpoints
+
+      // GET /api/projects/:name/environments - List all environments
+      const envsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/environments$/);
+      if (req.method === "GET" && envsMatch) {
+        const projectName = envsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const environments = await getProjectEnvironments(projectDir, projectName);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ environments }));
+        return;
+      }
+
+      // POST /api/projects/:name/deploy - Trigger deployment
+      const deployMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/deploy$/);
+      if (req.method === "POST" && deployMatch) {
+        const projectName = deployMatch[1];
+        const body = await readBody(req);
+        const { env = "staging", image } = JSON.parse(body || "{}");
+
+        const cliPath = path.join(__dirname, "..", "index.js");
+        try {
+          const args = ["deploy", projectName, "--env", env];
+          if (image) args.push("--image", image);
+
+          await execa("node", [cliPath, ...args], {
+            cwd: workingDir,
+            stdio: "pipe",
+          });
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true, environment: env }));
+        } catch (error) {
+          const execaError = error as { stderr?: string; message?: string };
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: false,
+            error: execaError.stderr || execaError.message || "Deployment failed"
+          }));
+        }
+        return;
+      }
+
+      // POST /api/projects/:name/rollback - Trigger rollback
+      const rollbackMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/rollback$/);
+      if (req.method === "POST" && rollbackMatch) {
+        const projectName = rollbackMatch[1];
+        const body = await readBody(req);
+        const { env = "staging", revision } = JSON.parse(body || "{}");
+
+        const cliPath = path.join(__dirname, "..", "index.js");
+        try {
+          const args = ["rollback", projectName, "--env", env];
+          if (revision) args.push("--revision", revision);
+
+          await execa("node", [cliPath, ...args], {
+            cwd: workingDir,
+            stdio: "pipe",
+          });
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true, environment: env }));
+        } catch (error) {
+          const execaError = error as { stderr?: string; message?: string };
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: false,
+            error: execaError.stderr || execaError.message || "Rollback failed"
+          }));
+        }
+        return;
+      }
+
+      // GET /api/projects/:name/pipeline - Get pipeline status
+      const pipelineMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pipeline$/);
+      if (req.method === "GET" && pipelineMatch) {
+        const projectName = pipelineMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const pipelineStatus = await getPipelineStatus(projectDir, projectName);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(pipelineStatus));
+        return;
+      }
+
+      // POST /api/projects/:name/pipeline - Run pipeline locally
+      const pipelineRunMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pipeline$/);
+      if (req.method === "POST" && pipelineRunMatch) {
+        const projectName = pipelineRunMatch[1];
+        const body = await readBody(req);
+        const { push = false, skipTests = false, skipScan = false } = JSON.parse(body || "{}");
+
+        const cliPath = path.join(__dirname, "..", "index.js");
+        try {
+          const args = ["pipeline", projectName, "--local"];
+          if (push) args.push("--push");
+          if (skipTests) args.push("--skip-tests");
+          if (skipScan) args.push("--skip-scan");
+
+          await execa("node", [cliPath, ...args], {
+            cwd: workingDir,
+            stdio: "pipe",
+          });
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true }));
+        } catch (error) {
+          const execaError = error as { stderr?: string; message?: string };
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            success: false,
+            error: execaError.stderr || execaError.message || "Pipeline failed"
+          }));
+        }
+        return;
+      }
+
       // 404 for unknown routes
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Not found" }));
@@ -787,3 +903,176 @@ async function handleAgentQuery(
 }
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
+// Phase 2: Helper functions for deployment and pipeline
+
+interface EnvironmentInfo {
+  name: string;
+  version: string;
+  status: "Synced" | "OutOfSync" | "Progressing" | "Missing" | "Unknown";
+  health: "Healthy" | "Degraded" | "Progressing" | "Missing" | "Unknown";
+  replicas: string;
+  lastDeployed?: string;
+}
+
+interface PipelineStatus {
+  lastRun?: {
+    status: "success" | "failure" | "running" | "unknown";
+    duration?: number;
+    timestamp?: string;
+    stages: Array<{
+      name: string;
+      status: "success" | "failure" | "running" | "skipped" | "pending";
+    }>;
+  };
+  jenkinsUrl?: string;
+}
+
+async function getProjectEnvironments(
+  projectDir: string,
+  projectName: string
+): Promise<EnvironmentInfo[]> {
+  const environments: EnvironmentInfo[] = [];
+  const config = await loadConfig(projectDir);
+
+  // Check local environment
+  try {
+    const { stdout } = await execa("docker", ["compose", "ps", "--format", "json"], {
+      cwd: projectDir,
+      reject: false,
+    });
+
+    const containers = stdout.trim().split("\n").filter(Boolean);
+    if (containers.length > 0) {
+      const anyRunning = containers.some((line: string) => {
+        try {
+          const c = JSON.parse(line);
+          return c.State?.toLowerCase() === "running";
+        } catch {
+          return false;
+        }
+      });
+
+      environments.push({
+        name: "local",
+        version: "dev",
+        status: anyRunning ? "Synced" : "OutOfSync",
+        health: anyRunning ? "Healthy" : "Degraded",
+        replicas: anyRunning ? "1/1" : "0/1",
+      });
+    }
+  } catch {
+    // Local environment not available
+  }
+
+  // Check Kubernetes environments if not local-only
+  if (config?.deployTarget !== "local-only") {
+    const kubeEnvs = ["staging", "production"];
+
+    for (const env of kubeEnvs) {
+      const namespace = `${projectName}-${env}`;
+
+      try {
+        // Try to get deployment status
+        const { stdout } = await execa("kubectl", [
+          "get",
+          "deployment",
+          projectName,
+          "-n",
+          namespace,
+          "-o",
+          "json",
+        ], { stdio: "pipe", reject: false });
+
+        if (stdout) {
+          const deployment = JSON.parse(stdout);
+          const available = deployment.status?.availableReplicas || 0;
+          const desired = deployment.spec?.replicas || 0;
+          const imageTag = deployment.spec?.template?.spec?.containers?.[0]?.image?.split(":")[1] || "latest";
+
+          environments.push({
+            name: env,
+            version: imageTag.substring(0, 7),
+            status: available === desired ? "Synced" : "Progressing",
+            health: available === desired ? "Healthy" : "Progressing",
+            replicas: `${available}/${desired}`,
+          });
+        }
+      } catch {
+        environments.push({
+          name: env,
+          version: "-",
+          status: "Missing",
+          health: "Missing",
+          replicas: "-",
+        });
+      }
+    }
+
+    // Check for ephemeral environments
+    try {
+      const { stdout } = await execa("kubectl", [
+        "get",
+        "namespaces",
+        "-l",
+        "ephemeral=true",
+        "-o",
+        "jsonpath={.items[*].metadata.name}",
+      ], { stdio: "pipe", reject: false });
+
+      const namespaces = stdout.split(" ").filter((n: string) => n.startsWith(`${projectName}-pr-`));
+
+      for (const ns of namespaces) {
+        const prNumber = ns.replace(`${projectName}-pr-`, "");
+        try {
+          const { stdout: depOutput } = await execa("kubectl", [
+            "get",
+            "deployment",
+            projectName,
+            "-n",
+            ns,
+            "-o",
+            "json",
+          ], { stdio: "pipe" });
+
+          const deployment = JSON.parse(depOutput);
+          const available = deployment.status?.availableReplicas || 0;
+          const desired = deployment.spec?.replicas || 0;
+
+          environments.push({
+            name: `PR #${prNumber}`,
+            version: deployment.spec?.template?.spec?.containers?.[0]?.image?.split(":")[1]?.substring(0, 7) || "latest",
+            status: available === desired ? "Synced" : "Progressing",
+            health: available === desired ? "Healthy" : "Progressing",
+            replicas: `${available}/${desired}`,
+          });
+        } catch {
+          // Skip if deployment not found
+        }
+      }
+    } catch {
+      // No ephemeral namespaces or kubectl not available
+    }
+  }
+
+  return environments;
+}
+
+async function getPipelineStatus(
+  projectDir: string,
+  projectName: string
+): Promise<PipelineStatus> {
+  // Check if Jenkinsfile exists
+  let hasJenkinsfile = false;
+  try {
+    await fs.access(path.join(projectDir, "Jenkinsfile"));
+    hasJenkinsfile = true;
+  } catch {
+    // No Jenkinsfile
+  }
+
+  return {
+    lastRun: undefined, // Would need Jenkins API integration
+    jenkinsUrl: hasJenkinsfile ? `http://localhost:8080/job/${projectName}` : undefined,
+  };
+}
