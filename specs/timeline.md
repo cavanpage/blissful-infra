@@ -12,7 +12,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | ✅ Complete |
 | **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ✅ Complete |
 | **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
-| **Phase 4** | Resilience | Chaos testing + FMEA | ⏳ Planned |
+| **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ⏳ Planned |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
 | **Phase 6** | Scale | More templates + cloud deploy | ⏳ Planned |
 
@@ -304,6 +304,159 @@ Opening http://localhost:3000...
 - [ ] `blissful-infra compare --old <ref> --new <ref>` command
 - [ ] Winner determination with confidence
 
+### 4.7 Canary Deployments (Argo Rollouts)
+**Goal:** Progressive delivery with automated analysis and rollback.
+
+**Framework:** [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) - Kubernetes controller for progressive delivery strategies.
+
+#### 4.7.1 Argo Rollouts Setup
+- [ ] Argo Rollouts controller installation (Helm chart)
+- [ ] Prometheus integration for metrics analysis
+- [ ] Dashboard plugin for Argo CD
+
+**Location:** `packages/cli/templates/cluster/argo-rollouts/`
+
+#### 4.7.2 Rollout Template (replaces Deployment)
+- [ ] Rollout CRD with canary strategy
+- [ ] Configurable traffic steps (10% → 25% → 50% → 100%)
+- [ ] Pause duration between steps
+- [ ] Anti-affinity for canary/stable pods
+
+**Location:** `packages/cli/templates/spring-boot/k8s/base/rollout.yaml`
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+spec:
+  strategy:
+    canary:
+      steps:
+        - setWeight: 10
+        - pause: { duration: 2m }
+        - analysis:
+            templates:
+              - templateName: {{PROJECT_NAME}}-analysis
+        - setWeight: 25
+        - pause: { duration: 2m }
+        - setWeight: 50
+        - pause: { duration: 5m }
+        - setWeight: 100
+```
+
+#### 4.7.3 Analysis Templates
+- [ ] AnalysisTemplate CRD for metric queries
+- [ ] Prometheus metric providers
+- [ ] Configurable success criteria (thresholds)
+- [ ] Multiple metric support (error rate, latency, custom)
+
+**Location:** `packages/cli/templates/spring-boot/k8s/base/analysis-template.yaml`
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+spec:
+  metrics:
+    - name: error-rate
+      provider:
+        prometheus:
+          address: http://prometheus:9090
+          query: |
+            sum(rate(http_requests_total{status=~"5.*",app="{{PROJECT_NAME}}"}[5m]))
+            / sum(rate(http_requests_total{app="{{PROJECT_NAME}}"}[5m])) * 100
+      successCondition: result[0] < 1
+      failureLimit: 3
+    - name: p95-latency
+      provider:
+        prometheus:
+          query: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{app="{{PROJECT_NAME}}"}[5m])) by (le))
+      successCondition: result[0] < 0.2
+```
+
+#### 4.7.4 Configuration Schema
+- [ ] Canary configuration in `blissful-infra.yaml`
+- [ ] Metric thresholds (error rate, latency percentiles)
+- [ ] Traffic steps customization
+- [ ] Analysis interval and failure limits
+
+**Configuration example:**
+```yaml
+# blissful-infra.yaml
+canary:
+  enabled: true
+  steps:
+    - weight: 10
+      pause: 2m
+    - weight: 25
+      pause: 2m
+    - weight: 50
+      pause: 5m
+    - weight: 100
+
+  analysis:
+    interval: 30s
+    failureLimit: 3
+    metrics:
+      - name: error-rate
+        threshold: "< 1%"          # Less than 1% error rate
+        query: custom              # Or use built-in
+      - name: p95-latency
+        threshold: "< 200ms"       # p95 under 200ms
+      - name: p99-latency
+        threshold: "< 500ms"
+      - name: success-rate
+        threshold: "> 99%"
+```
+
+#### 4.7.5 CLI Commands
+- [ ] `blissful-infra deploy --canary` - Deploy with canary strategy
+- [ ] `blissful-infra canary status` - Show rollout progress
+- [ ] `blissful-infra canary promote` - Skip analysis, promote immediately
+- [ ] `blissful-infra canary abort` - Abort and rollback
+- [ ] `blissful-infra canary pause` - Pause rollout
+- [ ] `blissful-infra canary resume` - Resume paused rollout
+
+**Location:** `packages/cli/src/commands/canary.ts`
+
+#### 4.7.6 Rollback Testing Mode
+- [ ] `blissful-infra canary test --simulate-failure` - Test auto-rollback
+- [ ] Inject bad metrics to trigger analysis failure
+- [ ] Verify rollback completes successfully
+- [ ] Report on rollback timing and behavior
+
+**Test scenarios:**
+```bash
+# Test 1: Simulate high error rate
+blissful-infra canary test --simulate-failure error-rate --value 5%
+
+# Test 2: Simulate high latency
+blissful-infra canary test --simulate-failure p95-latency --value 500ms
+
+# Test 3: Full rollback drill
+blissful-infra canary test --full-drill
+# Deploys canary → injects failure → verifies rollback → reports timing
+```
+
+#### 4.7.7 Dashboard Integration
+- [ ] Rollout progress visualization
+- [ ] Analysis results display
+- [ ] Promote/Abort buttons
+- [ ] Rollback history
+
+#### Canary Files Summary
+
+| Action | File Path |
+|--------|-----------|
+| CREATE | `packages/cli/templates/cluster/argo-rollouts/values.yaml` |
+| CREATE | `packages/cli/templates/spring-boot/k8s/base/rollout.yaml` |
+| CREATE | `packages/cli/templates/spring-boot/k8s/base/analysis-template.yaml` |
+| CREATE | `packages/cli/src/commands/canary.ts` |
+| CREATE | `packages/cli/src/utils/rollouts.ts` |
+| MODIFY | `packages/cli/src/utils/config.ts` (add canary config interface) |
+| MODIFY | `packages/cli/src/commands/deploy.ts` (add --canary flag) |
+| MODIFY | `packages/cli/src/index.ts` (register canary command) |
+| MODIFY | `packages/dashboard/src/components/CanaryStatus.tsx` |
+
 ### Phase 4 Definition of Done
 ```
 $ blissful-infra perf --env staging
@@ -347,6 +500,64 @@ Throughput   1200/s  1350/s  ✓ New
 Error Rate   0.1%    0.05%   ✓ New
 
 Recommendation: Promote new version
+
+# Canary Deployment
+$ blissful-infra deploy --canary --env production
+
+Starting canary deployment...
+✓ Canary pods deployed (10% traffic)
+⏳ Running analysis (2m pause)...
+
+Analysis Results:
+  error-rate:   0.3% (threshold: < 1%)    ✓ Pass
+  p95-latency:  145ms (threshold: < 200ms) ✓ Pass
+
+✓ Step 1 passed, promoting to 25%...
+⏳ Running analysis (2m pause)...
+✓ Step 2 passed, promoting to 50%...
+⏳ Running analysis (5m pause)...
+✓ Step 3 passed, promoting to 100%...
+
+✅ Canary deployment complete!
+
+$ blissful-infra canary status
+
+Rollout: my-service
+Status:  Progressing
+Weight:  50% canary / 50% stable
+
+Step     Weight  Status    Analysis
+----     ------  ------    --------
+1        10%     Complete  ✓ Passed
+2        25%     Complete  ✓ Passed
+3        50%     Running   ⏳ In Progress
+4        100%    Pending   -
+
+Current Analysis:
+  error-rate:   0.2%   ✓ Pass (< 1%)
+  p95-latency:  132ms  ✓ Pass (< 200ms)
+  p99-latency:  198ms  ✓ Pass (< 500ms)
+
+# Test rollback functionality
+$ blissful-infra canary test --simulate-failure error-rate --value 5%
+
+Testing canary rollback...
+✓ Deployed canary (10% traffic)
+⚡ Injecting failure: error-rate = 5%
+⏳ Waiting for analysis...
+
+Analysis detected failure:
+  error-rate: 5.2% (threshold: < 1%) ✗ FAIL
+
+🔄 Automatic rollback triggered...
+✓ Traffic shifted to stable (100%)
+✓ Canary pods terminated
+✓ Rollback completed in 12s
+
+Test Result: PASSED
+  - Analysis correctly detected failure
+  - Rollback triggered automatically
+  - Service recovered within SLO (< 30s)
 ```
 
 ---
