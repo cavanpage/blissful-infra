@@ -16,6 +16,7 @@ import { deployCommand, deployAction } from "./commands/deploy.js";
 import { rollbackCommand, rollbackAction } from "./commands/rollback.js";
 import { statusCommand, statusAction } from "./commands/status.js";
 import { pipelineCommand, pipelineAction } from "./commands/pipeline.js";
+import { jenkinsCommand } from "./commands/jenkins.js";
 
 const program = new Command();
 
@@ -41,6 +42,7 @@ program.addCommand(deployCommand);
 program.addCommand(rollbackCommand);
 program.addCommand(statusCommand);
 program.addCommand(pipelineCommand);
+program.addCommand(jenkinsCommand);
 
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {
@@ -59,7 +61,7 @@ async function main() {
 
   // If first arg could be a project name (not a known command or flag)
   if (args.length >= 1 && !args[0].startsWith("-")) {
-    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "help"];
+    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "help"];
     const firstArg = args[0];
 
     if (!knownCommands.includes(firstArg) && await isProjectDir(firstArg)) {
