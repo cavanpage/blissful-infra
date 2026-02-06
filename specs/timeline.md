@@ -14,7 +14,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ⏳ Planned |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
-| **Phase 6** | Scale | More templates + cloud deploy | ⏳ Planned |
+| **Phase 6** | Scale | More templates + cloud deploy + enterprise components | ⏳ Planned |
 
 ---
 
@@ -686,6 +686,66 @@ Created PR #142: fix/bounded-greeting-cache
 - [ ] Upgrade path for existing projects
 - [ ] Custom template support
 - [ ] Template marketplace/registry
+
+### 6.6 Enterprise Infrastructure Components
+**Goal:** Additional enterprise patterns for comprehensive local simulation.
+
+#### 6.6.1 Service Mesh (Istio/Linkerd)
+- [ ] Istio installation template for Kind cluster
+- [ ] mTLS between services (automatic encryption)
+- [ ] Traffic policies (rate limiting, retries, timeouts)
+- [ ] Service-to-service authorization
+- [ ] Kiali dashboard for visualization
+
+**Location:** `packages/cli/templates/cluster/istio/`
+
+#### 6.6.2 Secrets Management (Vault)
+- [ ] HashiCorp Vault deployment (dev mode)
+- [ ] Kubernetes auth method
+- [ ] External Secrets Operator integration
+- [ ] Secret rotation patterns
+- [ ] `blissful-infra secrets` command
+
+**Location:** `packages/cli/templates/cluster/vault/`
+
+#### 6.6.3 Distributed Tracing (Jaeger)
+- [ ] Jaeger all-in-one deployment
+- [ ] OpenTelemetry SDK in templates
+- [ ] Trace correlation in dashboard
+- [ ] Span analysis in agent
+
+**Location:** `packages/cli/templates/cluster/jaeger/`
+
+#### 6.6.4 API Gateway (Kong/Traefik)
+- [ ] Ingress controller setup
+- [ ] Rate limiting configuration
+- [ ] Authentication middleware
+- [ ] API versioning patterns
+
+#### 6.6.5 Network Policies
+- [ ] Default deny policies
+- [ ] Service-specific allow rules
+- [ ] Namespace isolation
+- [ ] Policy templates per service type
+
+#### 6.6.6 Certificate Management
+- [ ] cert-manager installation
+- [ ] Self-signed CA for local development
+- [ ] TLS ingress configuration
+- [ ] Certificate rotation
+
+#### Enterprise Components Summary
+
+| Component | Tool | Purpose | Complexity |
+|-----------|------|---------|------------|
+| Service Mesh | Istio | mTLS, traffic management | High |
+| Secrets | Vault | Credential management | Medium |
+| Tracing | Jaeger | Distributed tracing | Low |
+| Gateway | Traefik | Ingress, rate limiting | Medium |
+| Network Policies | K8s native | Pod isolation | Low |
+| Certificates | cert-manager | TLS management | Medium |
+
+**Note:** These components are optional and add significant resource requirements. Enable selectively based on learning goals.
 
 ---
 

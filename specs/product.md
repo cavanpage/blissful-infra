@@ -1,18 +1,44 @@
 # Blissful Infra - Technical Specification
 
-Hassle-free, reliable, and adaptable infrastructure for rapid prototyping and deployment.
+**Enterprise-grade infrastructure in a local sandbox. Zero cloud costs.**
+
+## Vision
+
+Give software engineers a complete enterprise development environment running locally on their laptop. Learn, experiment, and develop with the same infrastructure patterns used at scale — without cloud accounts, without touching shared environments, without surprise bills.
 
 ## Problem
 
-As a software engineer working on proofs of concept, I need:
-- Fast feedback loops - deploy and test code in minutes, not hours
-- Safe deployments - guardrails that prevent common mistakes without slowing me down
-- Minimal configuration - sensible defaults that just work, with escape hatches when needed
-- Reproducibility - spin up identical environments on demand
-- Confidence in deployments - verify new versions perform better before promoting
-- Resilience validation - confirm services degrade gracefully under failure conditions
-- Intelligent analysis - understand why things fail without digging through logs manually
-- Self-improving infrastructure - system learns from failures and suggests improvements
+Enterprise infrastructure is complex and inaccessible:
+
+**For engineers joining companies:**
+- CI/CD pipelines, Kubernetes, GitOps, canary deployments are hard to understand without hands-on experience
+- Shared environments are fragile — experimentation risks breaking things for others
+- Cloud resources are expensive — spinning up a test EKS cluster costs real money
+
+**For teams building production services:**
+- Testing deployment strategies (canary, blue-green) requires infrastructure that doesn't exist locally
+- Validating rollback procedures means intentionally breaking production-like environments
+- Chaos testing and resilience validation need dedicated resources
+
+**For startups:**
+- Enterprise patterns (observability, GitOps, progressive delivery) seem out of reach
+- Building infrastructure expertise takes time away from building the product
+- Cloud costs scale faster than revenue
+
+## Solution
+
+A local sandbox that simulates enterprise infrastructure:
+
+- **CI/CD Pipeline** — Jenkins with build, test, scan, deploy stages
+- **Container Registry** — Local Docker registry for images
+- **Kubernetes Manifests** — Deployment, Service, ConfigMap with Kustomize overlays
+- **GitOps** — Argo CD application manifests for declarative deployments
+- **Observability** — Metrics, logs, health monitoring, and dashboard
+- **Canary Deployments** — Progressive rollouts with automated analysis and rollback
+- **Chaos Testing** — FMEA scenarios to validate service resilience
+- **AI Agent** — Local LLM that analyzes failures and suggests fixes
+
+All running locally. No cloud account required. Same patterns as production.
 
 ## Functional Requirements
 
