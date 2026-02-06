@@ -2,9 +2,9 @@
 
 # ⚡ blissful-infra
 
-**Ship fast. Break nothing. Learn everything.**
+**Enterprise infrastructure. Local sandbox. Zero cloud costs.**
 
-Infrastructure that thinks for itself.
+Learn, experiment, and develop on production-grade infrastructure — all on your laptop.
 
 ---
 
@@ -16,15 +16,17 @@ Infrastructure that thinks for itself.
 
 ## The Problem
 
-You're a software engineer with an idea. You want to test it. But first you need to:
+Enterprise infrastructure is complex. At most companies, you'll find:
 
-- Set up a build pipeline
-- Configure Kubernetes manifests
-- Wire up monitoring
-- Add chaos testing
-- Debug that one cryptic error for 3 hours
+- CI/CD pipelines with Jenkins, GitHub Actions, or GitLab CI
+- Kubernetes clusters with GitOps (Argo CD, Flux)
+- Canary deployments with automated rollback
+- Observability stacks (Prometheus, Grafana, Jaeger)
+- Service meshes, secrets management, chaos testing
 
-**What if you just... didn't?**
+**But you can't easily experiment with any of it.** Shared environments are fragile. Cloud resources are expensive. Learning happens through trial and error — except errors in production cost money and reputation.
+
+**What if you had the full enterprise stack running locally?**
 
 ## The Solution
 
@@ -32,14 +34,37 @@ You're a software engineer with an idea. You want to test it. But first you need
 npx blissful-infra start my-idea
 ```
 
-That's it. One command. You now have:
+One command gives you a complete enterprise development environment:
 
-- ✅ Working hello world with test endpoints
-- ✅ Kafka event streaming + WebSockets
-- ✅ CI/CD pipeline (Jenkins + Argo CD)
-- ✅ Performance tests (k6)
-- ✅ Chaos/FMEA testing (Chaos Mesh)
-- ✅ Local LLM agent that debugs failures for you
+- ✅ **CI/CD Pipeline** — Jenkins with container builds, testing, security scanning
+- ✅ **Container Registry** — Local Docker registry for images
+- ✅ **Kubernetes Manifests** — Deployment, Service, ConfigMap with Kustomize overlays
+- ✅ **GitOps** — Argo CD application manifests
+- ✅ **Observability** — Metrics, logs, health monitoring dashboard
+- ✅ **Canary Deployments** — Progressive rollouts with automated analysis
+- ✅ **Chaos Testing** — FMEA scenarios to validate resilience
+- ✅ **AI Agent** — Local LLM that analyzes failures and suggests fixes
+
+**All running on your machine. No cloud account required. No surprise bills.**
+
+## Enterprise Stack Comparison
+
+What you'd pay for in the cloud vs what runs locally for free:
+
+| Component | Enterprise Tool | blissful-infra Local | Cloud Cost/Month |
+|-----------|----------------|---------------------|------------------|
+| CI/CD | Jenkins / GitHub Actions | ✅ Jenkins (Docker) | $50-500 |
+| Container Registry | ECR / GCR / ACR | ✅ Docker Registry | $10-100 |
+| Kubernetes | EKS / GKE / AKS | ✅ Kind / Manifests | $150-1000+ |
+| GitOps | Argo CD | ✅ Argo CD manifests | (included) |
+| Observability | Datadog / New Relic | ✅ Local metrics/logs | $100-1000+ |
+| Canary Deployments | Argo Rollouts | ✅ Rollout templates | (included) |
+| Chaos Testing | Gremlin / Chaos Mesh | ✅ Chaos scenarios | $500+ |
+| AI Analysis | — | ✅ Ollama (local LLM) | $0 |
+
+**Estimated savings: $800-3000+/month** for a typical development environment.
+
+The goal isn't to replace production infrastructure — it's to give you a sandbox where you can learn, experiment, and validate before touching shared environments.
 
 ## What Makes This Different
 
@@ -94,9 +119,16 @@ Resilience Score: 78/100
    [Generate PR]
 ```
 
-### 💸 Zero API Costs
+### 💸 Zero Cloud Costs
 
-All AI runs locally via Ollama. Your code, your data, your machine.
+Everything runs locally — no AWS/GCP/Azure account needed:
+
+- **AI Agent** — Ollama runs LLMs on your machine (no OpenAI API costs)
+- **CI/CD** — Jenkins runs in Docker (no GitHub Actions minutes)
+- **Container Registry** — Local registry (no ECR/GCR storage fees)
+- **Kubernetes** — Kind cluster or just manifests (no EKS/GKE charges)
+
+Your code stays on your machine. No data leaves your laptop. No surprise bills.
 
 ## Additional Features
 
@@ -399,17 +431,24 @@ docker compose -f test-app/docker-compose.yaml down
 rm -rf test-app
 ```
 
+## Who This Is For
+
+- **Engineers joining companies with complex infrastructure** — Understand CI/CD, K8s, GitOps without breaking shared environments
+- **Teams testing deployment strategies** — Experiment with canary deployments, rollback procedures, chaos testing
+- **Developers building production-ready services** — Start with enterprise patterns from day one
+- **Startups** — Get enterprise-grade infrastructure patterns without enterprise-grade costs
+
 ## Philosophy
 
-1. **Iterate on ideas, not infrastructure** — The infra should disappear.
-2. **Fail fast, fix faster** — Every failure teaches the system something.
-3. **Trust but verify** — Parallel testing before promotion. Always.
-4. **Own your stack** — No vendor lock-in. Eject anytime.
+1. **Production patterns, local execution** — Same infrastructure as enterprise, running on your laptop
+2. **Learn by doing** — Experiment freely without fear of breaking shared environments
+3. **Fail safely** — Test rollbacks, chaos scenarios, and failure modes before production
+4. **Zero lock-in** — Standard tools (Jenkins, K8s, Argo CD) you can take anywhere
 
 ---
 
 <div align="center">
 
-**Built for engineers who'd rather ship than configure.**
+**Enterprise infrastructure for your laptop. No cloud required.**
 
 </div>
