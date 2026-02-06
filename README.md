@@ -2,9 +2,9 @@
 
 # ⚡ blissful-infra
 
-**Enterprise infrastructure. Local sandbox. Instant feedback.**
+**Because moving fast is, well, simply blissful.**
 
-Iterate in seconds, not hours. Deploy, test, and experiment with production-grade infrastructure — all on your laptop.
+Enterprise infrastructure. Local sandbox. Instant feedback. Deploy, test, and experiment with production-grade infrastructure — all on your laptop.
 
 ---
 
@@ -36,6 +36,21 @@ The traditional path:
 Enterprise infrastructure is complex. At most companies, you'll find CI/CD pipelines, Kubernetes clusters, GitOps, observability stacks, service meshes, and chaos testing. **But you can't easily experiment with any of it.** Shared environments are fragile. Cloud resources are expensive. And when production is on fire, waiting for environment access isn't an option.
 
 **What if you had the full enterprise stack running locally?**
+
+## Who This Is For
+
+- **Engineers joining companies with complex infrastructure** — Understand CI/CD, K8s, GitOps without breaking shared environments
+- **Teams testing deployment strategies** — Experiment with canary deployments, rollback procedures, chaos testing
+- **Developers building production-ready services** — Start with enterprise patterns from day one
+- **Startups** — Get enterprise-grade infrastructure patterns without enterprise-grade costs
+
+## Philosophy
+
+1. **Seconds, not hours** — Fast feedback loops accelerate learning and iteration
+2. **Production patterns, local execution** — Same infrastructure as enterprise, running on your laptop
+3. **Learn by doing** — Experiment freely without fear of breaking shared environments
+4. **Fail safely** — Test rollbacks, chaos scenarios, and failure modes before production
+5. **Zero lock-in** — Standard tools (Jenkins, K8s, Argo CD) you can take anywhere
 
 ## The Solution
 
@@ -507,21 +522,6 @@ docker compose -f test-app/docker-compose.yaml logs -f
 docker compose -f test-app/docker-compose.yaml down
 rm -rf test-app
 ```
-
-## Who This Is For
-
-- **Engineers joining companies with complex infrastructure** — Understand CI/CD, K8s, GitOps without breaking shared environments
-- **Teams testing deployment strategies** — Experiment with canary deployments, rollback procedures, chaos testing
-- **Developers building production-ready services** — Start with enterprise patterns from day one
-- **Startups** — Get enterprise-grade infrastructure patterns without enterprise-grade costs
-
-## Philosophy
-
-1. **Seconds, not hours** — Fast feedback loops accelerate learning and iteration
-2. **Production patterns, local execution** — Same infrastructure as enterprise, running on your laptop
-3. **Learn by doing** — Experiment freely without fear of breaking shared environments
-4. **Fail safely** — Test rollbacks, chaos scenarios, and failure modes before production
-5. **Zero lock-in** — Standard tools (Jenkins, K8s, Argo CD) you can take anywhere
 
 ---
 
