@@ -40,6 +40,24 @@ A local sandbox that simulates enterprise infrastructure:
 
 All running locally. No cloud account required. Same patterns as production.
 
+## Fast Feedback Loops
+
+The core value proposition: **iterate in seconds, not hours**.
+
+| Workflow | Traditional (Cloud) | blissful-infra (Local) |
+|----------|---------------------|------------------------|
+| Code → Deploy → Test | 15-30 min (CI queue + deploy) | **30 seconds** |
+| Test pipeline changes | Commit → PR → CI runs | **Run locally, instant** |
+| Experiment with K8s config | Change → commit → wait | **Edit → apply → see** |
+| Test rollback procedure | Coordinate downtime window | **Anytime, no risk** |
+| Debug deployment failure | Dig through Datadog/CloudWatch | **Logs right in terminal** |
+| Try canary deployment | Requires prod-like traffic | **Simulate locally** |
+
+**Why this matters:**
+- Learning happens through experimentation — fast feedback = more experiments = faster learning
+- Confidence comes from practice — test rollbacks 100 times locally before doing it once in production
+- Innovation requires safety — try wild ideas without fear of breaking shared environments
+
 ## Functional Requirements
 
 ### CLI (blissful-infra)
