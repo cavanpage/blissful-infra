@@ -1,6 +1,28 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+export interface RegistryConfig {
+  type: "local" | "ecr" | "gcr" | "acr";
+  url: string;
+  region?: string;
+}
+
+export interface KubernetesConfig {
+  context?: string;
+  namespace?: string;
+}
+
+export interface ArgoCDConfig {
+  server?: string;
+  project?: string;
+}
+
+export interface PipelineConfig {
+  parallelTests?: boolean;
+  securityScan?: boolean;
+  buildCache?: boolean;
+}
+
 export interface ProjectConfig {
   name: string;
   type: string;
@@ -8,6 +30,11 @@ export interface ProjectConfig {
   frontend?: string;
   database: string;
   deployTarget: string;
+  // Phase 2 additions
+  registry?: RegistryConfig;
+  kubernetes?: KubernetesConfig;
+  argocd?: ArgoCDConfig;
+  pipeline?: PipelineConfig;
 }
 
 export async function loadConfig(projectDir?: string): Promise<ProjectConfig | null> {

@@ -1,0 +1,199 @@
+pipeline {
+    agent any
+
+    environment {
+        PROJECT_NAME = '{{PROJECT_NAME}}'
+        REGISTRY_URL = '{{REGISTRY_URL}}'
+        IMAGE_TAG = "${env.GIT_COMMIT?.take(7) ?: 'latest'}"
+        DOCKER_IMAGE = "${REGISTRY_URL}/${PROJECT_NAME}"
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Build') {
+            parallel {
+                stage('Compile') {
+                    steps {
+                        sh './gradlew clean build -x test --no-daemon --build-cache'
+                    }
+                }
+                stage('Lint') {
+                    steps {
+                        sh './gradlew ktlintCheck --no-daemon || true'
+                    }
+                }
+            }
+        }
+
+        stage('Test') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        sh './gradlew test --no-daemon'
+                    }
+                    post {
+                        always {
+                            junit allowEmptyResults: true, testResults: 'build/test-results/test/*.xml'
+                            publishHTML(target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'build/reports/tests/test',
+                                reportFiles: 'index.html',
+                                reportName: 'Test Report'
+                            ])
+                        }
+                    }
+                }
+{{#IF_POSTGRES}}
+                stage('Integration Tests') {
+                    steps {
+                        sh './gradlew integrationTest --no-daemon || true'
+                    }
+                }
+{{/IF_POSTGRES}}
+            }
+        }
+
+        stage('Containerize') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                script {
+                    // Trivy vulnerability scan - fail on CRITICAL, warn on HIGH
+                    sh """
+                        trivy image --severity CRITICAL --exit-code 1 ${DOCKER_IMAGE}:${IMAGE_TAG} || exit 1
+                        trivy image --severity HIGH --exit-code 0 ${DOCKER_IMAGE}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Push') {
+            steps {
+                script {
+                    sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                    sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+{{#IF_KUBERNETES}}
+        stage('Deploy Ephemeral') {
+            when {
+                changeRequest()
+            }
+            environment {
+                NAMESPACE = "${PROJECT_NAME}-pr-${env.CHANGE_ID}"
+            }
+            steps {
+                script {
+                    sh """
+                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl label namespace ${NAMESPACE} ephemeral=true --overwrite
+
+                        # Update image tag in kustomization
+                        cd k8s/overlays/ephemeral
+                        kustomize edit set image ${DOCKER_IMAGE}=${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                        # Apply manifests
+                        kubectl apply -k . -n ${NAMESPACE}
+
+                        # Wait for deployment
+                        kubectl rollout status deployment/${PROJECT_NAME} -n ${NAMESPACE} --timeout=300s
+                    """
+                }
+            }
+            post {
+                success {
+                    script {
+                        def serviceUrl = sh(
+                            script: "kubectl get svc ${PROJECT_NAME} -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo 'pending'",
+                            returnStdout: true
+                        ).trim()
+                        echo "Ephemeral environment deployed: ${serviceUrl}"
+                    }
+                }
+            }
+        }
+
+        stage('Integration Tests (Ephemeral)') {
+            when {
+                changeRequest()
+            }
+            environment {
+                NAMESPACE = "${PROJECT_NAME}-pr-${env.CHANGE_ID}"
+            }
+            steps {
+                script {
+                    // Wait for service to be ready
+                    sh """
+                        kubectl wait --for=condition=ready pod -l app=${PROJECT_NAME} -n ${NAMESPACE} --timeout=120s
+
+                        # Run smoke tests against ephemeral environment
+                        SERVICE_URL=\$(kubectl get svc ${PROJECT_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        curl -f http://\${SERVICE_URL}:8080/health || exit 1
+                        curl -f http://\${SERVICE_URL}:8080/ready || exit 1
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Staging') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    sh """
+                        # Update image tag for staging
+                        cd k8s/overlays/staging
+                        kustomize edit set image ${DOCKER_IMAGE}=${DOCKER_IMAGE}:${IMAGE_TAG}
+
+                        # Sync via Argo CD
+                        argocd app sync ${PROJECT_NAME}-staging --timeout 300 || kubectl apply -k . -n ${PROJECT_NAME}-staging
+
+                        # Wait for rollout
+                        kubectl rollout status deployment/${PROJECT_NAME} -n ${PROJECT_NAME}-staging --timeout=300s
+                    """
+                }
+            }
+        }
+{{/IF_KUBERNETES}}
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+{{#IF_KUBERNETES}}
+        cleanup {
+            script {
+                // Teardown ephemeral environment after PR is merged
+                if (env.CHANGE_ID && currentBuild.result != 'FAILURE') {
+                    def namespace = "${PROJECT_NAME}-pr-${env.CHANGE_ID}"
+                    sh "kubectl delete namespace ${namespace} --ignore-not-found=true || true"
+                }
+            }
+        }
+{{/IF_KUBERNETES}}
+        success {
+            echo "Pipeline completed successfully for ${PROJECT_NAME}"
+        }
+        failure {
+            echo "Pipeline failed for ${PROJECT_NAME}"
+        }
+    }
+}

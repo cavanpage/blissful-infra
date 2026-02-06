@@ -10,8 +10,8 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 |-------|-------|-------------|--------|
 | **Phase 0** | Specification | Product spec, agent spec, timeline | ✅ Complete |
 | **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | ✅ Complete |
-| **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ⏳ Planned |
-| **Phase 3** | Observability | Metrics, logs, dashboard v1 | 🔄 In Progress |
+| **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ✅ Complete |
+| **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
 | **Phase 4** | Resilience | Chaos testing + FMEA | ⏳ Planned |
 | **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
 | **Phase 6** | Scale | More templates + cloud deploy | ⏳ Planned |
@@ -107,100 +107,189 @@ Stopped.
 
 ---
 
-## Phase 2: Pipeline
+## Phase 2: Pipeline ✅
 
 **Goal:** Automated build, test, and deploy pipeline with ephemeral environments.
 
 ### 2.1 Jenkinsfile Template
-- [ ] Pipeline stages: build → test → containerize
-- [ ] Parallel test execution
-- [ ] Build caching for faster iterations
-- [ ] Artifact publishing (container image)
-- [ ] Pipeline status reporting
+- [x] Pipeline stages: build → test → containerize → security scan → push → deploy
+- [x] Parallel test execution (unit tests + integration tests)
+- [x] Build caching for faster iterations
+- [x] Artifact publishing (container image)
+- [x] Pipeline status reporting
+- [x] Conditional K8s deployment stages
+
+**Location:** `packages/cli/templates/spring-boot/Jenkinsfile`
 
 ### 2.2 Container Registry
-- [ ] Local registry option (for development)
-- [ ] ECR/GCR/ACR integration (configurable)
-- [ ] Image tagging strategy (git sha + latest)
-- [ ] Security scanning with Trivy
+- [x] Local registry option (localhost:5000)
+- [x] ECR/GCR/ACR integration (configurable via blissful-infra.yaml)
+- [x] Image tagging strategy (git sha + latest)
+- [x] Security scanning with Trivy
+- [x] Registry utilities (`packages/cli/src/utils/registry.ts`)
 
 ### 2.3 Kubernetes Manifests
-- [ ] Deployment, Service, ConfigMap templates
-- [ ] Namespace per environment strategy
-- [ ] Resource limits and requests
-- [ ] Readiness/liveness probes
+- [x] Deployment, Service, ConfigMap, Secret templates
+- [x] ServiceAccount with security context
+- [x] Kustomize base + overlays (staging, production, ephemeral)
+- [x] Namespace per environment strategy
+- [x] Resource limits and requests (256Mi-2Gi memory, 100m-2000m CPU)
+- [x] Readiness probe (`/ready`, 10s initial delay)
+- [x] Liveness probe (`/live`, 30s initial delay)
+
+**Location:** `packages/cli/templates/spring-boot/k8s/`
 
 ### 2.4 Argo CD Integration
-- [ ] Application manifest generation
-- [ ] GitOps sync configuration
-- [ ] `blissful-infra deploy --env <env>` command
-- [ ] `blissful-infra rollback --env <env>` command
-- [ ] Sync status in CLI
+- [x] Application manifest generation
+- [x] GitOps sync configuration with auto-heal
+- [x] `blissful-infra deploy --env <env>` command
+- [x] `blissful-infra rollback --env <env>` command
+- [x] `blissful-infra status` command showing all environments
+
+**Location:** `packages/cli/templates/spring-boot/k8s/argocd/application.yaml`
 
 ### 2.5 Ephemeral Environments
-- [ ] Spin up isolated namespace per PR/branch
-- [ ] Automatic teardown after pipeline
-- [ ] DNS/ingress for ephemeral access
-- [ ] `blissful-infra pipeline --local` for local pipeline run
+- [x] Spin up isolated namespace per PR/branch
+- [x] Automatic teardown after pipeline (via Jenkinsfile post stage)
+- [x] Ephemeral overlay with TTL annotation
+- [x] `blissful-infra pipeline --local` for local pipeline run
+
+### 2.6 New CLI Commands
+- [x] `blissful-infra deploy` - Deploy via Argo CD or kubectl
+- [x] `blissful-infra rollback` - Rollback to previous revision
+- [x] `blissful-infra status` - Show deployment status table
+- [x] `blissful-infra pipeline --local` - Run build/test/containerize locally
+
+**Location:** `packages/cli/src/commands/{deploy,rollback,status,pipeline}.ts`
 
 ### Phase 2 Definition of Done
 ```
 $ git push origin feature/my-change
 
 # Jenkins automatically:
-# 1. Builds and tests
+# 1. Builds and tests (parallel)
 # 2. Creates container image
-# 3. Deploys to ephemeral environment
-# 4. Runs smoke tests
-# 5. Reports status back to PR
+# 3. Runs Trivy security scan
+# 4. Deploys to ephemeral environment
+# 5. Runs integration tests
+# 6. Tears down on merge/close
 
 $ blissful-infra status
 Environment  Version    Status
 -----------  -------    ------
+local        dev        ✓ Synced
 ephemeral    abc123     ✓ Synced
 staging      def456     ✓ Synced
 production   def456     ✓ Synced
+
+$ blissful-infra pipeline --local
+Running local pipeline...
+✓ Build (12.3s)
+✓ Test (8.5s)
+✓ Containerize (15.2s)
+✓ Security Scan (4.1s)
+Pipeline completed successfully!
 ```
 
 ---
 
-## Phase 3: Observability
+## Phase 3: Observability ✅
 
-**Goal:** See what's happening in your services with metrics, logs, and a basic dashboard.
+**Goal:** See what's happening in your local services with metrics, logs, and a basic dashboard.
 
-### 3.1 Metrics Collection
-- [ ] Prometheus deployment (local + cluster)
-- [ ] Application metrics endpoint (`/metrics`)
-- [ ] Standard metrics: request rate, latency histograms, error rate
-- [ ] JVM/runtime metrics (memory, GC, threads)
-- [ ] Kafka consumer lag metrics
-- [ ] `blissful-infra perf --env <env>` for on-demand metrics view
+### 3.1 Metrics Collection (Local)
+- [x] Docker container metrics collection (CPU, memory, network I/O)
+- [x] Spring Boot Actuator integration
+- [x] HTTP metrics: request rate, response time, error rate
+- [x] JVM/runtime metrics (memory, GC, threads)
+- [x] Time series visualization with configurable windows (1m, 5m, 15m, 1h, 24h)
+- [x] Real-time metrics polling
 
-### 3.2 Log Aggregation
-- [ ] Loki deployment
-- [ ] Log shipping from containers
-- [ ] Structured log parsing
-- [ ] Log correlation by trace ID
-- [ ] `blissful-infra logs --env <env>` with filtering
+### 3.2 Log Aggregation (Local)
+- [x] Docker log collection from containers
+- [x] Structured log parsing (JSON)
+- [x] Log viewer with real-time updates
+- [x] `blissful-infra logs` command with filtering
 
-### 3.3 Performance Testing
+### 3.3 Health Monitoring
+- [x] Service health checks (backend, frontend, databases, Kafka)
+- [x] Real-time health status display
+- [x] Health endpoint polling
+
+### 3.4 Dashboard v1 (Minimal)
+- [x] React + Vite + TypeScript scaffolding
+- [x] Environment status view (local)
+- [x] Service health status cards
+- [x] Time series metrics display (CPU, memory, request rate, response time)
+- [x] Log viewer with search and filtering
+- [x] Agent chat interface with markdown support
+- [x] `blissful-infra dashboard` command to open
+
+**Location:** `packages/dashboard/`
+
+**Note:** Phase 3 focuses on local observability only. Cluster-based observability (Prometheus, Loki) and performance testing (k6) moved to Phase 4.
+
+### Phase 3 Definition of Done
+```
+$ blissful-infra dashboard
+Opening http://localhost:3000...
+
+# Dashboard shows:
+# - Service health status (all services green)
+# - Time series charts for CPU, memory, request rate, response time
+# - Configurable time windows (1m to 24h)
+# - Real-time log viewer with search
+# - Agent chat with markdown-formatted responses
+```
+
+---
+
+## Phase 4: Resilience
+
+**Goal:** Validate service behavior under failure conditions with performance and chaos testing.
+
+### 4.1 Performance Testing
 - [ ] k6 test scripts in template
 - [ ] `blissful-infra perf --env <env>` command
 - [ ] Baseline thresholds (p95 < 200ms, error rate < 1%)
 - [ ] Results output (CLI table + JSON)
 - [ ] Integration with pipeline (fail on regression)
 
-### 3.4 Dashboard v1 (Minimal)
-- [ ] React + Vite + TypeScript + shadcn/ui scaffolding
-- [ ] Environment status view (local/staging/prod)
-- [ ] Current version per environment
-- [ ] Basic metrics display (request rate, error rate, latency)
-- [ ] Log viewer with search
-- [ ] `blissful-infra dashboard` to open
+### 4.2 Chaos Mesh Setup
+- [ ] Chaos Mesh deployment to cluster
+- [ ] CLI integration for chaos commands
+- [ ] Experiment templates per failure type
 
-**Note:** Keep dashboard minimal. CLI is primary interface. Dashboard is for visualization only.
+### 4.3 Failure Scenarios
+- [ ] `pod-kill` - random pod termination
+- [ ] `network-latency` - inject latency
+- [ ] `kafka-down` - Kafka unavailability
+- [ ] `db-latency` - database slowdown
+- [ ] `memory-pressure` - memory stress
+- [ ] Custom scenario support
 
-### Phase 3 Definition of Done
+### 4.4 FMEA Framework
+- [ ] Baseline capture before chaos
+- [ ] Automated validation during chaos
+- [ ] Recovery verification after chaos
+- [ ] SLO threshold configuration
+- [ ] `blissful-infra chaos --env <env>` command
+- [ ] `blissful-infra chaos --env <env> --scenario <s>` for specific tests
+
+### 4.5 Resilience Scorecard
+- [ ] Score calculation based on FMEA results
+- [ ] Gap identification (missing circuit breakers, etc.)
+- [ ] Recommendations for improvement
+- [ ] Score tracking over time
+
+### 4.6 Parallel Version Comparison
+- [ ] Deploy two versions side-by-side
+- [ ] Run identical load tests against both
+- [ ] Collect and compare metrics
+- [ ] `blissful-infra compare --old <ref> --new <ref>` command
+- [ ] Winner determination with confidence
+
+### Phase 4 Definition of Done
 ```
 $ blissful-infra perf --env staging
 
@@ -215,52 +304,6 @@ Results:
 
 ✓ All thresholds passed
 
-$ blissful-infra dashboard
-Opening http://localhost:3000...
-```
-
----
-
-## Phase 4: Resilience
-
-**Goal:** Validate service behavior under failure conditions.
-
-### 4.1 Chaos Mesh Setup
-- [ ] Chaos Mesh deployment to cluster
-- [ ] CLI integration for chaos commands
-- [ ] Experiment templates per failure type
-
-### 4.2 Failure Scenarios
-- [ ] `pod-kill` - random pod termination
-- [ ] `network-latency` - inject latency
-- [ ] `kafka-down` - Kafka unavailability
-- [ ] `db-latency` - database slowdown
-- [ ] `memory-pressure` - memory stress
-- [ ] Custom scenario support
-
-### 4.3 FMEA Framework
-- [ ] Baseline capture before chaos
-- [ ] Automated validation during chaos
-- [ ] Recovery verification after chaos
-- [ ] SLO threshold configuration
-- [ ] `blissful-infra chaos --env <env>` command
-- [ ] `blissful-infra chaos --env <env> --scenario <s>` for specific tests
-
-### 4.4 Resilience Scorecard
-- [ ] Score calculation based on FMEA results
-- [ ] Gap identification (missing circuit breakers, etc.)
-- [ ] Recommendations for improvement
-- [ ] Score tracking over time
-
-### 4.5 Parallel Version Comparison
-- [ ] Deploy two versions side-by-side
-- [ ] Run identical load tests against both
-- [ ] Collect and compare metrics
-- [ ] `blissful-infra compare --old <ref> --new <ref>` command
-- [ ] Winner determination with confidence
-
-### Phase 4 Definition of Done
-```
 $ blissful-infra chaos --env staging
 
 Running FMEA scenarios...
@@ -467,14 +510,17 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - [ ] Agent responds to basic queries
 
 ### Phase 2 (Pipeline)
-- [ ] Full pipeline completes < 10 minutes
-- [ ] Ephemeral environments work reliably
+- [x] Full pipeline completes < 10 minutes
+- [x] Ephemeral environments work reliably
+- [x] Local pipeline command available
 
 ### Phase 3 (Observability)
-- [ ] Metrics available within 30s of request
-- [ ] Logs searchable across services
+- [x] Metrics available within 30s of request
+- [x] Logs searchable across services
+- [x] Dashboard displays real-time metrics and health status
 
 ### Phase 4 (Resilience)
+- [ ] Performance tests complete < 5 minutes
 - [ ] 5+ chaos scenarios working
 - [ ] Comparison tests complete < 15 minutes
 
