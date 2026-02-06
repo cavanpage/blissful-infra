@@ -1,0 +1,70 @@
+jenkins:
+  systemMessage: "Blissful Infra CI/CD Server - Managed by blissful-infra CLI"
+  numExecutors: 4
+  mode: NORMAL
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin"
+          name: "Administrator"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "REGISTRY_URL"
+            value: "localhost:5000"
+          - key: "DOCKER_HOST"
+            value: "unix:///var/run/docker.sock"
+
+unclassified:
+  location:
+    url: "http://localhost:8081/"
+    adminAddress: "admin@blissful-infra.local"
+
+  globalLibraries:
+    libraries: []
+
+  gitHubPluginConfig:
+    configs: []
+
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+
+  jdk:
+    installations:
+      - name: "JDK21"
+        home: "/opt/java/openjdk"
+
+  gradle:
+    installations:
+      - name: "Gradle"
+        gradleInstaller:
+          - id: "8.5"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "docker-registry"
+              username: ""
+              password: ""
+              description: "Local Docker Registry"
+
+jobs:
+  - script: |
+      folder('blissful-projects') {
+        displayName('Blissful Infra Projects')
+        description('Auto-generated folder for blissful-infra projects')
+      }

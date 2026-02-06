@@ -1,0 +1,37 @@
+services:
+  jenkins:
+    image: jenkins/jenkins:lts-jdk21
+    container_name: blissful-jenkins
+    user: root
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+    volumes:
+      - blissful-jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./casc.yaml:/var/jenkins_home/casc_configs/casc.yaml:ro
+      - ./plugins.txt:/usr/share/jenkins/ref/plugins.txt:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # Local Docker registry for storing images
+  registry:
+    image: registry:2
+    container_name: blissful-registry
+    ports:
+      - "5000:5000"
+    volumes:
+      - blissful-registry-data:/var/lib/registry
+    restart: unless-stopped
+
+volumes:
+  blissful-jenkins-data:
+  blissful-registry-data:

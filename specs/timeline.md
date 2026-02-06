@@ -162,26 +162,41 @@ Stopped.
 
 **Location:** `packages/cli/src/commands/{deploy,rollback,status,pipeline}.ts`
 
+### 2.7 Shared Jenkins Server
+- [x] `blissful-infra jenkins start` - Start Jenkins + local registry
+- [x] `blissful-infra jenkins stop` - Stop Jenkins server
+- [x] `blissful-infra jenkins status` - Show Jenkins status
+- [x] `blissful-infra jenkins add-project <name>` - Register project with Jenkins
+- [x] `blissful-infra jenkins build <name>` - Trigger a build
+- [x] `blissful-infra jenkins list` - List registered projects
+- [x] Pre-configured with Pipeline, Docker, Git, Blue Ocean plugins
+- [x] Jenkins Configuration as Code (JCasC) for zero-touch setup
+- [x] Local Docker registry on port 5000
+- [x] Default credentials: admin/admin
+
+**Location:** `packages/cli/templates/jenkins/`, `packages/cli/src/commands/jenkins.ts`
+
 ### Phase 2 Definition of Done
 ```
-$ git push origin feature/my-change
+# Start shared Jenkins server
+$ blissful-infra jenkins start
+Starting Jenkins...
+✓ Jenkins is ready
+URL: http://localhost:8081
+Username: admin
+Password: admin
+Registry: localhost:5000
 
-# Jenkins automatically:
-# 1. Builds and tests (parallel)
-# 2. Creates container image
-# 3. Runs Trivy security scan
-# 4. Deploys to ephemeral environment
-# 5. Runs integration tests
-# 6. Tears down on merge/close
+# Create and register a project
+$ blissful-infra create my-service --template spring-boot --deploy kubernetes
+$ blissful-infra jenkins add-project my-service
+✓ Added my-service to Jenkins
 
-$ blissful-infra status
-Environment  Version    Status
------------  -------    ------
-local        dev        ✓ Synced
-ephemeral    abc123     ✓ Synced
-staging      def456     ✓ Synced
-production   def456     ✓ Synced
+# Trigger a build
+$ blissful-infra jenkins build my-service
+✓ Build triggered for my-service
 
+# Or run pipeline locally
 $ blissful-infra pipeline --local
 Running local pipeline...
 ✓ Build (12.3s)

@@ -233,12 +233,20 @@ The dashboard is a central control panel that lets you:
 - **Start/Stop Services**: Control each project with one click
 - **View Logs**: Real-time logs from any selected project
 - **Agent Chat**: Ask the AI about errors for any project
+- **Jenkins CI**: Shared Jenkins server auto-starts with the dashboard
+
+**Services started with dashboard:**
+- Dashboard: `http://localhost:3001`
+- API: `http://localhost:3002`
+- Jenkins: `http://localhost:8081` (admin/admin)
+- Registry: `localhost:5000`
 
 Options:
 ```bash
 blissful-infra dashboard --dir ~/projects   # Specify projects directory
 blissful-infra dashboard --port 3002        # Custom API port
 blissful-infra dashboard --no-open          # Don't auto-open browser
+blissful-infra dashboard --no-jenkins       # Don't start Jenkins CI server
 ```
 
 ### AI Agent (CLI)
@@ -254,6 +262,32 @@ blissful-infra my-app agent --query "What errors are in the logs?"
 ```
 
 The agent analyzes your Docker logs and git history to help debug issues.
+
+### Jenkins CI Server
+
+Manage the shared Jenkins CI/CD server independently:
+
+```bash
+# Start Jenkins (also starts with dashboard)
+blissful-infra jenkins start
+
+# Stop Jenkins
+blissful-infra jenkins stop
+
+# Check status
+blissful-infra jenkins status
+
+# Register a project with Jenkins
+blissful-infra jenkins add-project my-app
+
+# Trigger a build
+blissful-infra jenkins build my-app
+
+# List registered projects
+blissful-infra jenkins list
+```
+
+Jenkins runs with a local Docker registry for container images. Credentials are `admin/admin`.
 
 ## Project Types
 
