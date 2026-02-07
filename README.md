@@ -8,7 +8,7 @@ Enterprise infrastructure. Local sandbox. Instant feedback. Deploy, test, and ex
 
 ---
 
-[Product Spec](./specs/product.md) · [Agent Spec](./specs/agent.md) · [Timeline](./specs/timeline.md) · [Get Started](#quick-start)
+[Product Spec](./specs/product.md) · [Agent Spec](./specs/agent.md) · [Timeline](./specs/timeline.md) · [Learning Guide](./docs/LEARNING_GUIDE.md) · [Get Started](#quick-start)
 
 ---
 
@@ -157,6 +157,14 @@ When you debug a real production incident, you'll know exactly where to look bec
 4. **Production** → Canary rollout with automated analysis
 
 Local doesn't replace cloud environments — it accelerates your path to them.
+
+## Learning Guide
+
+New to enterprise infrastructure? See the **[Learning Guide](./docs/LEARNING_GUIDE.md)** for:
+- What each component does (CI/CD, K8s, GitOps, Observability)
+- How they integrate together
+- Hands-on learning path
+- Common scenarios and troubleshooting
 
 ## What Makes This Different
 
