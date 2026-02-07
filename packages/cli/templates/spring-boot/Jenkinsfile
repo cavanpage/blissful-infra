@@ -6,25 +6,46 @@ pipeline {
         REGISTRY_URL = '{{REGISTRY_URL}}'
         IMAGE_TAG = "${env.GIT_COMMIT?.take(7) ?: 'latest'}"
         DOCKER_IMAGE = "${REGISTRY_URL}/${PROJECT_NAME}"
+        // Gradle cache directory
+        GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
+        // Enable Docker BuildKit for layer caching
+        DOCKER_BUILDKIT = '1'
     }
 
     options {
         timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
+        timestamps()
     }
 
     stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    // Record build start time
+                    env.BUILD_START_TIME = System.currentTimeMillis().toString()
+                }
+            }
+        }
+
         stage('Build') {
             parallel {
                 stage('Compile') {
                     steps {
-                        sh './gradlew clean build -x test --no-daemon --build-cache'
+                        // Use Gradle build cache and dependency cache
+                        sh '''
+                            ./gradlew clean build -x test \
+                                --no-daemon \
+                                --build-cache \
+                                --gradle-user-home ${GRADLE_USER_HOME} \
+                                -Dorg.gradle.caching=true
+                        '''
                     }
                 }
                 stage('Lint') {
                     steps {
-                        sh './gradlew ktlintCheck --no-daemon || true'
+                        sh './gradlew ktlintCheck --no-daemon --gradle-user-home ${GRADLE_USER_HOME} || true'
                     }
                 }
             }
@@ -63,8 +84,15 @@ pipeline {
         stage('Containerize') {
             steps {
                 script {
-                    sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
-                    sh "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
+                    // Use BuildKit with cache mounts for faster builds
+                    sh '''
+                        docker build \
+                            --build-arg BUILDKIT_INLINE_CACHE=1 \
+                            --cache-from ${DOCKER_IMAGE}:latest \
+                            -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                            -t ${DOCKER_IMAGE}:latest \
+                            .
+                    '''
                 }
             }
         }
@@ -176,6 +204,21 @@ pipeline {
 
     post {
         always {
+            script {
+                // Calculate build duration
+                def buildDuration = 0
+                if (env.BUILD_START_TIME) {
+                    buildDuration = (System.currentTimeMillis() - env.BUILD_START_TIME.toLong()) / 1000
+                }
+                env.BUILD_DURATION_SECONDS = buildDuration.toString()
+
+                // Log build metrics
+                echo "Build Metrics:"
+                echo "  Project: ${PROJECT_NAME}"
+                echo "  Duration: ${buildDuration}s"
+                echo "  Image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                echo "  Result: ${currentBuild.result ?: 'SUCCESS'}"
+            }
             cleanWs()
         }
 {{#IF_KUBERNETES}}
@@ -190,10 +233,55 @@ pipeline {
         }
 {{/IF_KUBERNETES}}
         success {
-            echo "Pipeline completed successfully for ${PROJECT_NAME}"
+            script {
+                echo "Pipeline completed successfully for ${PROJECT_NAME}"
+                sendSlackNotification('success')
+            }
         }
         failure {
-            echo "Pipeline failed for ${PROJECT_NAME}"
+            script {
+                echo "Pipeline failed for ${PROJECT_NAME}"
+                sendSlackNotification('failure')
+            }
         }
     }
+}
+
+// Helper function for Slack notifications
+def sendSlackNotification(String status) {
+    // Try to get Slack webhook from credentials (optional)
+    def slackWebhookUrl = ''
+    try {
+        withCredentials([string(credentialsId: 'slack-webhook-url', variable: 'SLACK_URL')]) {
+            slackWebhookUrl = env.SLACK_URL
+        }
+    } catch (Exception e) {
+        echo "Slack notifications not configured (credential 'slack-webhook-url' not found)"
+        return
+    }
+
+    if (!slackWebhookUrl) {
+        return
+    }
+
+    def color = status == 'success' ? 'good' : 'danger'
+    def emoji = status == 'success' ? '✅' : '❌'
+    def statusText = status == 'success' ? 'succeeded' : 'failed'
+    def duration = env.BUILD_DURATION_SECONDS ?: '0'
+
+    def payload = """{
+        "text": "${emoji} *${env.PROJECT_NAME}* build ${statusText}",
+        "attachments": [{
+            "color": "${color}",
+            "fields": [
+                {"title": "Branch", "value": "${env.GIT_BRANCH ?: 'unknown'}", "short": true},
+                {"title": "Commit", "value": "${env.IMAGE_TAG}", "short": true},
+                {"title": "Duration", "value": "${duration}s", "short": true},
+                {"title": "Build", "value": "#${env.BUILD_NUMBER}", "short": true}
+            ],
+            "footer": "<${env.BUILD_URL}|View Build>"
+        }]
+    }"""
+
+    sh "curl -s -X POST -H 'Content-type: application/json' --data '${payload}' '${slackWebhookUrl}' || true"
 }
