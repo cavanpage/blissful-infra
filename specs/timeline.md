@@ -81,6 +81,16 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 - [x] Basic analysis prompts (no knowledge base yet)
 - [x] Model fallback (70b → 8b if unavailable)
 
+### 1.5 Template Enhancements
+- [ ] HealthController: `/ready` checks database connectivity (use autowired DataSource)
+- [ ] HealthController: `/ready` checks Kafka connectivity
+- [ ] HealthController: Track and expose startup time
+- [ ] Add Micrometer Prometheus registry for metrics endpoint
+- [ ] Request duration histogram (for p95/p99 latency calculation)
+- [ ] Request counter with status code labels
+
+**Location:** `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HealthController.kt`
+
 ### MVP Definition of Done
 ```
 $ npx blissful-infra create
@@ -176,6 +186,16 @@ Stopped.
 
 **Location:** `packages/cli/templates/jenkins/`, `packages/cli/src/commands/jenkins.ts`
 
+### 2.8 Pipeline Enhancements
+- [ ] Build notifications (Slack webhook integration)
+- [ ] Build notifications (email support)
+- [ ] Gradle/Maven dependency caching in Jenkinsfile
+- [ ] Docker layer caching for faster rebuilds
+- [ ] Pipeline failure notifications with error context
+- [ ] Build time tracking and trends
+
+**Location:** `packages/cli/templates/spring-boot/Jenkinsfile`, `packages/cli/templates/jenkins/`
+
 ### Phase 2 Definition of Done
 ```
 # Start shared Jenkins server
@@ -243,6 +263,17 @@ Pipeline completed successfully!
 **Location:** `packages/dashboard/`
 
 **Note:** Phase 3 focuses on local observability only. Cluster-based observability (Prometheus, Loki) and performance testing (k6) moved to Phase 4.
+
+### 3.5 Observability Enhancements
+- [ ] Historical metrics storage (persist metrics to file/SQLite)
+- [ ] Metrics export to JSON/CSV
+- [ ] Dashboard: Request latency percentiles (p50, p95, p99)
+- [ ] Dashboard: Error rate trends over time
+- [ ] Dashboard: Comparison view (before/after deploy)
+- [ ] Log retention and rotation settings
+- [ ] Alert thresholds configuration (notify on high error rate)
+
+**Location:** `packages/cli/src/server/api.ts`, `packages/dashboard/src/components/`
 
 ### Phase 3 Definition of Done
 ```
