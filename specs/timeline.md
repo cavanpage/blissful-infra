@@ -82,14 +82,16 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 - [x] Model fallback (70b → 8b if unavailable)
 
 ### 1.5 Template Enhancements
-- [ ] HealthController: `/ready` checks database connectivity (use autowired DataSource)
-- [ ] HealthController: `/ready` checks Kafka connectivity
-- [ ] HealthController: Track and expose startup time
-- [ ] Add Micrometer Prometheus registry for metrics endpoint
-- [ ] Request duration histogram (for p95/p99 latency calculation)
-- [ ] Request counter with status code labels
+- [x] HealthController: `/ready` checks database connectivity (use autowired DataSource)
+- [x] HealthController: `/ready` checks Kafka connectivity
+- [x] HealthController: Track and expose startup time (`/startup` endpoint)
+- [x] Add Micrometer Prometheus registry for metrics endpoint (`/actuator/prometheus`)
+- [x] Request duration histogram (for p95/p99 latency calculation)
+- [x] Request counter with status code labels
 
-**Location:** `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HealthController.kt`
+**Location:**
+- `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/controller/HealthController.kt`
+- `packages/cli/templates/spring-boot/src/main/kotlin/com/blissful/config/MetricsConfig.kt`
 
 ### MVP Definition of Done
 ```
