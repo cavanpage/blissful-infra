@@ -49,6 +49,17 @@ interface HttpMetrics {
   totalRequests: number;
   requestsPerSecond: number;
   avgResponseTime: number;
+  // Latency percentiles (in milliseconds)
+  p50Latency?: number;
+  p95Latency?: number;
+  p99Latency?: number;
+  // Error metrics
+  errorCount?: number;
+  errorRate?: number;
+  // Status code breakdown
+  status2xx?: number;
+  status4xx?: number;
+  status5xx?: number;
 }
 
 interface ServiceHealth {
@@ -816,14 +827,17 @@ async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {
   try {
     // Try to fetch from Spring Boot Actuator on port 8080
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1000);
+    const timeout = setTimeout(() => controller.abort(), 2000);
 
+    // Fetch base metrics
     const response = await fetch("http://localhost:8080/actuator/metrics/http.server.requests", {
       signal: controller.signal,
     });
-    clearTimeout(timeout);
 
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      clearTimeout(timeout);
+      return undefined;
+    }
 
     const data = await response.json() as {
       measurements?: Array<{ statistic: string; value: number }>;
@@ -843,10 +857,77 @@ async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {
 
     const avgResponseTime = totalRequests > 0 ? (totalTime / totalRequests) * 1000 : 0; // Convert to ms
 
+    // Fetch Prometheus metrics for percentiles and error rates
+    let p50Latency: number | undefined;
+    let p95Latency: number | undefined;
+    let p99Latency: number | undefined;
+    let status2xx = 0;
+    let status4xx = 0;
+    let status5xx = 0;
+
+    try {
+      const promResponse = await fetch("http://localhost:8080/actuator/prometheus", {
+        signal: controller.signal,
+      });
+
+      if (promResponse.ok) {
+        const promText = await promResponse.text();
+        const lines = promText.split("\n");
+
+        for (const line of lines) {
+          // Parse percentile metrics: http_server_requests_seconds{...,quantile="0.5",...} value
+          if (line.startsWith("http_server_requests_seconds") && !line.startsWith("#")) {
+            const quantileMatch = line.match(/quantile="([^"]+)"/);
+            const valueMatch = line.match(/\}\s+([\d.]+(?:E[+-]?\d+)?)/);
+
+            if (quantileMatch && valueMatch) {
+              const quantile = parseFloat(quantileMatch[1]);
+              const value = parseFloat(valueMatch[1]) * 1000; // Convert to ms
+
+              if (quantile === 0.5) p50Latency = value;
+              else if (quantile === 0.95) p95Latency = value;
+              else if (quantile === 0.99) p99Latency = value;
+            }
+          }
+
+          // Parse status code counts from http_requests_total or http_server_requests_seconds_count
+          if ((line.startsWith("http_requests_total") || line.startsWith("http_server_requests_seconds_count")) && !line.startsWith("#")) {
+            const statusMatch = line.match(/status="(\d+)"/);
+            const valueMatch = line.match(/\}\s+([\d.]+)/);
+
+            if (statusMatch && valueMatch) {
+              const status = parseInt(statusMatch[1], 10);
+              const count = parseFloat(valueMatch[1]);
+
+              if (status >= 200 && status < 300) status2xx += count;
+              else if (status >= 400 && status < 500) status4xx += count;
+              else if (status >= 500 && status < 600) status5xx += count;
+            }
+          }
+        }
+      }
+    } catch {
+      // Prometheus endpoint not available
+    }
+
+    clearTimeout(timeout);
+
+    const errorCount = status5xx;
+    const totalForError = status2xx + status4xx + status5xx;
+    const errorRate = totalForError > 0 ? (errorCount / totalForError) * 100 : 0;
+
     return {
       totalRequests,
       requestsPerSecond: 0, // Will be calculated on frontend from delta
       avgResponseTime,
+      p50Latency,
+      p95Latency,
+      p99Latency,
+      errorCount,
+      errorRate,
+      status2xx,
+      status4xx,
+      status5xx,
     };
   } catch {
     // Actuator not available or error

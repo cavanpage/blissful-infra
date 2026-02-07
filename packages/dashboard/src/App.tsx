@@ -97,6 +97,14 @@ interface HttpMetrics {
   totalRequests: number
   requestsPerSecond: number
   avgResponseTime: number
+  p50Latency?: number
+  p95Latency?: number
+  p99Latency?: number
+  errorCount?: number
+  errorRate?: number
+  status2xx?: number
+  status4xx?: number
+  status5xx?: number
 }
 
 interface MetricsResponse {
@@ -111,6 +119,10 @@ interface MetricsHistory {
   http: {
     requestsPerSecond: number[]
     avgResponseTime: number[]
+    p50Latency: number[]
+    p95Latency: number[]
+    p99Latency: number[]
+    errorRate: number[]
     lastTotalRequests: number
   }
 }
@@ -274,7 +286,7 @@ function App() {
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
     timestamps: [],
     containers: {},
-    http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
+    http: { requestsPerSecond: [], avgResponseTime: [], p50Latency: [], p95Latency: [], p99Latency: [], errorRate: [], lastTotalRequests: 0 },
   })
   const [metricsLoaded, setMetricsLoaded] = useState(false)
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(TIME_WINDOWS[0])
@@ -428,6 +440,10 @@ function App() {
             const rps = prev.http.lastTotalRequests > 0 ? Math.max(0, deltaRequests) : 0
             newHttp.requestsPerSecond = [...prev.http.requestsPerSecond, rps].slice(-maxDataPoints)
             newHttp.avgResponseTime = [...prev.http.avgResponseTime, data.httpMetrics.avgResponseTime].slice(-maxDataPoints)
+            newHttp.p50Latency = [...prev.http.p50Latency, data.httpMetrics.p50Latency ?? 0].slice(-maxDataPoints)
+            newHttp.p95Latency = [...prev.http.p95Latency, data.httpMetrics.p95Latency ?? 0].slice(-maxDataPoints)
+            newHttp.p99Latency = [...prev.http.p99Latency, data.httpMetrics.p99Latency ?? 0].slice(-maxDataPoints)
+            newHttp.errorRate = [...prev.http.errorRate, data.httpMetrics.errorRate ?? 0].slice(-maxDataPoints)
             newHttp.lastTotalRequests = data.httpMetrics.totalRequests
           }
 
@@ -462,7 +478,7 @@ function App() {
       setMetricsHistory({
         timestamps: [],
         containers: {},
-        http: { requestsPerSecond: [], avgResponseTime: [], lastTotalRequests: 0 },
+        http: { requestsPerSecond: [], avgResponseTime: [], p50Latency: [], p95Latency: [], p99Latency: [], errorRate: [], lastTotalRequests: 0 },
       })
       setHealthHistory({ timestamps: [], services: {} })
       setCurrentHealth([])
@@ -1122,23 +1138,52 @@ function App() {
                               No HTTP metrics available. Metrics are collected from Spring Boot Actuator on port 8080.
                             </p>
                           ) : (
-                            <div className="grid grid-cols-2 gap-6">
-                              <TimeSeriesChart
-                                data={metricsHistory.http.requestsPerSecond}
-                                timestamps={metricsHistory.timestamps}
-                                color="#a855f7"
-                                label="Requests/sec"
-                                unit=""
-                                windowSeconds={timeWindow.value}
-                              />
-                              <TimeSeriesChart
-                                data={metricsHistory.http.avgResponseTime}
-                                timestamps={metricsHistory.timestamps}
-                                color="#eab308"
-                                label="Avg Response Time"
-                                unit="ms"
-                                windowSeconds={timeWindow.value}
-                              />
+                            <div className="space-y-6">
+                              <div className="grid grid-cols-2 gap-6">
+                                <TimeSeriesChart
+                                  data={metricsHistory.http.requestsPerSecond}
+                                  timestamps={metricsHistory.timestamps}
+                                  color="#a855f7"
+                                  label="Requests/sec"
+                                  unit=""
+                                  windowSeconds={timeWindow.value}
+                                />
+                                <TimeSeriesChart
+                                  data={metricsHistory.http.errorRate}
+                                  timestamps={metricsHistory.timestamps}
+                                  color="#ef4444"
+                                  label="Error Rate"
+                                  unit="%"
+                                  maxValue={100}
+                                  windowSeconds={timeWindow.value}
+                                />
+                              </div>
+                              <div className="grid grid-cols-3 gap-6">
+                                <TimeSeriesChart
+                                  data={metricsHistory.http.p50Latency}
+                                  timestamps={metricsHistory.timestamps}
+                                  color="#22c55e"
+                                  label="p50 Latency"
+                                  unit="ms"
+                                  windowSeconds={timeWindow.value}
+                                />
+                                <TimeSeriesChart
+                                  data={metricsHistory.http.p95Latency}
+                                  timestamps={metricsHistory.timestamps}
+                                  color="#eab308"
+                                  label="p95 Latency"
+                                  unit="ms"
+                                  windowSeconds={timeWindow.value}
+                                />
+                                <TimeSeriesChart
+                                  data={metricsHistory.http.p99Latency}
+                                  timestamps={metricsHistory.timestamps}
+                                  color="#f97316"
+                                  label="p99 Latency"
+                                  unit="ms"
+                                  windowSeconds={timeWindow.value}
+                                />
+                              </div>
                             </div>
                           )}
                         </div>

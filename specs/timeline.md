@@ -189,12 +189,12 @@ Stopped.
 **Location:** `packages/cli/templates/jenkins/`, `packages/cli/src/commands/jenkins.ts`
 
 ### 2.8 Pipeline Enhancements
-- [ ] Build notifications (Slack webhook integration)
+- [x] Build notifications (Slack webhook integration)
 - [ ] Build notifications (email support)
-- [ ] Gradle/Maven dependency caching in Jenkinsfile
-- [ ] Docker layer caching for faster rebuilds
-- [ ] Pipeline failure notifications with error context
-- [ ] Build time tracking and trends
+- [x] Gradle/Maven dependency caching in Jenkinsfile
+- [x] Docker layer caching for faster rebuilds (BuildKit)
+- [x] Pipeline failure notifications with error context
+- [x] Build time tracking and metrics logging
 
 **Location:** `packages/cli/templates/spring-boot/Jenkinsfile`, `packages/cli/templates/jenkins/`
 
@@ -269,8 +269,8 @@ Pipeline completed successfully!
 ### 3.5 Observability Enhancements
 - [ ] Historical metrics storage (persist metrics to file/SQLite)
 - [ ] Metrics export to JSON/CSV
-- [ ] Dashboard: Request latency percentiles (p50, p95, p99)
-- [ ] Dashboard: Error rate trends over time
+- [x] Dashboard: Request latency percentiles (p50, p95, p99)
+- [x] Dashboard: Error rate trends over time
 - [ ] Dashboard: Comparison view (before/after deploy)
 - [ ] Log retention and rotation settings
 - [ ] Alert thresholds configuration (notify on high error rate)
