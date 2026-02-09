@@ -168,6 +168,40 @@ interface HistoricalMetricsResponse {
   count: number
 }
 
+interface AlertThreshold {
+  id: string
+  name: string
+  metric: string
+  operator: string
+  value: number
+  container?: string
+  enabled: boolean
+  severity: 'warning' | 'critical'
+}
+
+interface TriggeredAlert {
+  id: string
+  thresholdId: string
+  name: string
+  metric: string
+  value: number
+  threshold: number
+  severity: 'warning' | 'critical'
+  triggeredAt: number
+  resolvedAt?: number
+  container?: string
+}
+
+interface AlertsResponse {
+  config: {
+    thresholds: AlertThreshold[]
+    notifyOnConsole: boolean
+    cooldownMs: number
+  }
+  activeAlerts: TriggeredAlert[]
+  recentHistory: TriggeredAlert[]
+}
+
 // Time window options
 const TIME_WINDOWS = [
   { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
@@ -322,6 +356,7 @@ function App() {
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [activeAlerts, setActiveAlerts] = useState<TriggeredAlert[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -544,6 +579,31 @@ function App() {
     }
   }
 
+  const fetchAlerts = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/alerts`)
+      if (res.ok) {
+        const data: AlertsResponse = await res.json()
+        setActiveAlerts(data.activeAlerts)
+      }
+    } catch (e) {
+      console.error('Failed to fetch alerts:', e)
+    }
+  }
+
+  const acknowledgeAllAlerts = async () => {
+    if (!selectedProject) return
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/alerts/acknowledge`, {
+        method: 'POST',
+      })
+      setActiveAlerts([])
+    } catch (e) {
+      console.error('Failed to acknowledge alerts:', e)
+    }
+  }
+
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
@@ -578,15 +638,18 @@ function App() {
         setMetricsLoaded(true)
         fetchMetrics()
         fetchHealth()
+        fetchAlerts()
       }
       loadData()
 
       const metricsInterval = setInterval(fetchMetrics, timeWindow.intervalMs)
+      const alertsInterval = setInterval(fetchAlerts, 10000) // Check alerts every 10 seconds
       const healthInterval = setInterval(fetchHealth, 5000) // Check health every 5 seconds
 
       return () => {
         clearInterval(metricsInterval)
         clearInterval(healthInterval)
+        clearInterval(alertsInterval)
       }
     }
   }, [selectedProject?.name, activeTab, timeWindow])
@@ -1144,6 +1207,56 @@ function App() {
                       </div>
                     ) : (
                       <div className="space-y-6">
+                        {/* Active Alerts */}
+                        {activeAlerts.length > 0 && (
+                          <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-red-500">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-lg font-medium flex items-center gap-2">
+                                <AlertCircle className="w-5 h-5 text-red-400" />
+                                Active Alerts ({activeAlerts.length})
+                              </h3>
+                              <button
+                                onClick={acknowledgeAllAlerts}
+                                className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition-colors"
+                              >
+                                Acknowledge All
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              {activeAlerts.map((alert) => (
+                                <div
+                                  key={alert.id}
+                                  className={`p-3 rounded-lg ${
+                                    alert.severity === 'critical'
+                                      ? 'bg-red-500/20 border border-red-500/50'
+                                      : 'bg-yellow-500/20 border border-yellow-500/50'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs px-2 py-0.5 rounded ${
+                                        alert.severity === 'critical' ? 'bg-red-600' : 'bg-yellow-600'
+                                      }`}>
+                                        {alert.severity.toUpperCase()}
+                                      </span>
+                                      <span className="font-medium">{alert.name}</span>
+                                      {alert.container && (
+                                        <span className="text-sm text-gray-400">[{alert.container}]</span>
+                                      )}
+                                    </div>
+                                    <span className="text-sm text-gray-400">
+                                      {new Date(alert.triggeredAt).toLocaleTimeString()}
+                                    </span>
+                                  </div>
+                                  <div className="text-sm text-gray-300 mt-1">
+                                    {alert.metric}: {alert.value.toFixed(2)} (threshold: {alert.threshold})
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Service Health Status */}
                         {currentHealth.length > 0 && (
                           <div className="bg-gray-800 rounded-lg p-4">

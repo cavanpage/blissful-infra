@@ -23,6 +23,30 @@ import {
   type ContainerMetricsData,
   type HttpMetricsData,
 } from "../utils/metrics-storage.js";
+import {
+  checkAlerts,
+  loadAlertsConfig,
+  saveAlertsConfig,
+  getActiveAlerts,
+  getAlertHistory,
+  addThreshold,
+  updateThreshold,
+  deleteThreshold,
+  acknowledgeAlerts,
+  initializeAlerts,
+  type AlertThreshold,
+  type MetricsSnapshot,
+} from "../utils/alerts.js";
+import {
+  persistLogs,
+  searchLogs,
+  loadLogConfig,
+  saveLogConfig,
+  getLogStorageStats,
+  forceRotate,
+  clearLogs,
+  type LogRetentionConfig,
+} from "../utils/log-storage.js";
 
 const SYSTEM_PROMPT = `You are a helpful infrastructure assistant for the blissful-infra project. You help developers understand their application logs, diagnose issues, and suggest improvements.
 
@@ -201,8 +225,93 @@ export function createApiServer(workingDir: string, port = 3002) {
         const projectName = logsMatch[1];
         const projectDir = path.join(workingDir, projectName);
         const logs = await collectDockerLogs(projectDir, { tail: 100 });
+
+        // Persist logs to storage in background
+        persistLogs(projectDir, logs).catch(() => {});
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ logs }));
+        return;
+      }
+
+      // GET /api/projects/:name/logs/search - Search stored logs
+      const logsSearchMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/search$/);
+      if (req.method === "GET" && logsSearchMatch) {
+        const projectName = logsSearchMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        const service = url.searchParams.get("service") || undefined;
+        const level = url.searchParams.get("level") || undefined;
+        const query = url.searchParams.get("q") || undefined;
+        const startTime = url.searchParams.get("start") || undefined;
+        const endTime = url.searchParams.get("end") || undefined;
+        const limit = url.searchParams.get("limit")
+          ? parseInt(url.searchParams.get("limit")!, 10)
+          : 500;
+
+        const logs = await searchLogs(projectDir, {
+          service,
+          level,
+          query,
+          startTime,
+          endTime,
+          limit,
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ logs, count: logs.length }));
+        return;
+      }
+
+      // GET /api/projects/:name/logs/config - Get log retention config
+      const logConfigMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/config$/);
+      if (req.method === "GET" && logConfigMatch) {
+        const projectName = logConfigMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        const config = await loadLogConfig(projectDir);
+        const stats = await getLogStorageStats(projectDir);
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ config, stats }));
+        return;
+      }
+
+      // PUT /api/projects/:name/logs/config - Update log retention config
+      const logConfigUpdateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/config$/);
+      if (req.method === "PUT" && logConfigUpdateMatch) {
+        const projectName = logConfigUpdateMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const config = JSON.parse(body) as LogRetentionConfig;
+
+        await saveLogConfig(projectDir, config);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // POST /api/projects/:name/logs/rotate - Force log rotation
+      const logRotateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/rotate$/);
+      if (req.method === "POST" && logRotateMatch) {
+        const projectName = logRotateMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        await forceRotate(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // DELETE /api/projects/:name/logs/stored - Clear stored logs
+      const logClearMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/stored$/);
+      if (req.method === "DELETE" && logClearMatch) {
+        const projectName = logClearMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        await clearLogs(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
         return;
       }
 
@@ -376,6 +485,90 @@ export function createApiServer(workingDir: string, port = 3002) {
         await clearMetrics(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // GET /api/projects/:name/alerts - Get active alerts and config
+      const alertsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts$/);
+      if (req.method === "GET" && alertsMatch) {
+        const projectName = alertsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        await initializeAlerts(projectDir);
+        const config = await loadAlertsConfig(projectDir);
+        const activeAlerts = await getActiveAlerts(projectDir);
+        const history = await getAlertHistory(projectDir, 20);
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ config, activeAlerts, recentHistory: history }));
+        return;
+      }
+
+      // PUT /api/projects/:name/alerts/config - Update alerts config
+      const alertsConfigMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/config$/);
+      if (req.method === "PUT" && alertsConfigMatch) {
+        const projectName = alertsConfigMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const config = JSON.parse(body);
+
+        await saveAlertsConfig(projectDir, config);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      // POST /api/projects/:name/alerts/thresholds - Add new threshold
+      const addThresholdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/thresholds$/);
+      if (req.method === "POST" && addThresholdMatch) {
+        const projectName = addThresholdMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const thresholdData = JSON.parse(body) as Omit<AlertThreshold, "id">;
+
+        const newThreshold = await addThreshold(projectDir, thresholdData);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, threshold: newThreshold }));
+        return;
+      }
+
+      // PUT /api/projects/:name/alerts/thresholds/:id - Update threshold
+      const updateThresholdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/thresholds\/([^/]+)$/);
+      if (req.method === "PUT" && updateThresholdMatch) {
+        const projectName = updateThresholdMatch[1];
+        const thresholdId = updateThresholdMatch[2];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const updates = JSON.parse(body);
+
+        const success = await updateThreshold(projectDir, thresholdId, updates);
+        res.writeHead(success ? 200 : 404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success }));
+        return;
+      }
+
+      // DELETE /api/projects/:name/alerts/thresholds/:id - Delete threshold
+      const deleteThresholdMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/thresholds\/([^/]+)$/);
+      if (req.method === "DELETE" && deleteThresholdMatch) {
+        const projectName = deleteThresholdMatch[1];
+        const thresholdId = deleteThresholdMatch[2];
+        const projectDir = path.join(workingDir, projectName);
+
+        const success = await deleteThreshold(projectDir, thresholdId);
+        res.writeHead(success ? 200 : 404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success }));
+        return;
+      }
+
+      // POST /api/projects/:name/alerts/acknowledge - Acknowledge all active alerts
+      const ackAlertsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/alerts\/acknowledge$/);
+      if (req.method === "POST" && ackAlertsMatch) {
+        const projectName = ackAlertsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        const count = await acknowledgeAlerts(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, acknowledged: count }));
         return;
       }
 
@@ -837,8 +1030,25 @@ async function getContainerMetrics(projectDir: string, saveToStorage = true): Pr
         : undefined;
 
       await saveMetrics(projectDir, projectName, containerData, httpData);
+
+      // Check alerts against current metrics
+      const alertSnapshot: MetricsSnapshot = {
+        containers: containers.map((c) => ({
+          name: c.name,
+          cpuPercent: c.cpuPercent,
+          memoryPercent: c.memoryPercent,
+        })),
+        http: httpMetrics
+          ? {
+              errorRate: httpMetrics.errorRate,
+              p95Latency: httpMetrics.p95Latency,
+              p99Latency: httpMetrics.p99Latency,
+            }
+          : undefined,
+      };
+      await checkAlerts(projectDir, alertSnapshot);
     } catch {
-      // Ignore storage errors - don't affect metrics collection
+      // Ignore storage/alert errors - don't affect metrics collection
     }
   }
 
