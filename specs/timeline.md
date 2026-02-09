@@ -266,16 +266,19 @@ Pipeline completed successfully!
 
 **Note:** Phase 3 focuses on local observability only. Cluster-based observability (Prometheus, Loki) and performance testing (k6) moved to Phase 4.
 
-### 3.5 Observability Enhancements
-- [ ] Historical metrics storage (persist metrics to file/SQLite)
-- [ ] Metrics export to JSON/CSV
+### 3.5 Observability Enhancements ✅
+- [x] Historical metrics storage (persist metrics to JSON lines file with rotation)
+- [x] Metrics export to JSON/CSV via API
 - [x] Dashboard: Request latency percentiles (p50, p95, p99)
 - [x] Dashboard: Error rate trends over time
+- [x] Dashboard: Load historical metrics on tab switch
+- [x] Alert thresholds configuration (CPU, memory, error rate, latency)
+- [x] Dashboard: Active alerts display with acknowledge
+- [x] Log retention and rotation settings (configurable size, age, file count limits)
+- [x] Log search API (filter by service, level, keyword, time range)
 - [ ] Dashboard: Comparison view (before/after deploy)
-- [ ] Log retention and rotation settings
-- [ ] Alert thresholds configuration (notify on high error rate)
 
-**Location:** `packages/cli/src/server/api.ts`, `packages/dashboard/src/components/`
+**Location:** `packages/cli/src/utils/metrics-storage.ts`, `packages/cli/src/utils/alerts.ts`, `packages/cli/src/utils/log-storage.ts`, `packages/cli/src/server/api.ts`, `packages/dashboard/src/App.tsx`
 
 ### Phase 3 Definition of Done
 ```
