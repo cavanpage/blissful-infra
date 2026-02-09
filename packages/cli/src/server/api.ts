@@ -12,6 +12,17 @@ import {
   type ChatMessage,
 } from "../utils/ollama.js";
 import { collectContext, formatContextForPrompt } from "../utils/collectors.js";
+import {
+  saveMetrics,
+  loadMetrics,
+  getMetricsSummary,
+  exportMetricsToJson,
+  exportMetricsToCsv,
+  getStorageInfo,
+  clearMetrics,
+  type ContainerMetricsData,
+  type HttpMetricsData,
+} from "../utils/metrics-storage.js";
 
 const SYSTEM_PROMPT = `You are a helpful infrastructure assistant for the blissful-infra project. You help developers understand their application logs, diagnose issues, and suggest improvements.
 
@@ -270,6 +281,101 @@ export function createApiServer(workingDir: string, port = 3002) {
         const health = await checkServiceHealth(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(health));
+        return;
+      }
+
+      // GET /api/projects/:name/metrics/history - Get historical metrics
+      const historyMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/history$/);
+      if (req.method === "GET" && historyMatch) {
+        const projectName = historyMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        // Parse query params
+        const startTime = url.searchParams.get("start")
+          ? parseInt(url.searchParams.get("start")!, 10)
+          : Date.now() - 3600000; // Default: last hour
+        const endTime = url.searchParams.get("end")
+          ? parseInt(url.searchParams.get("end")!, 10)
+          : Date.now();
+        const limit = url.searchParams.get("limit")
+          ? parseInt(url.searchParams.get("limit")!, 10)
+          : 500;
+
+        const metrics = await loadMetrics(projectDir, { startTime, endTime, limit });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ metrics, count: metrics.length }));
+        return;
+      }
+
+      // GET /api/projects/:name/metrics/summary - Get aggregated metrics summary
+      const summaryMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/summary$/);
+      if (req.method === "GET" && summaryMatch) {
+        const projectName = summaryMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        const startTime = url.searchParams.get("start")
+          ? parseInt(url.searchParams.get("start")!, 10)
+          : undefined;
+        const endTime = url.searchParams.get("end")
+          ? parseInt(url.searchParams.get("end")!, 10)
+          : undefined;
+
+        const summary = await getMetricsSummary(projectDir, { startTime, endTime });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(summary));
+        return;
+      }
+
+      // GET /api/projects/:name/metrics/storage - Get storage info
+      const storageMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/storage$/);
+      if (req.method === "GET" && storageMatch) {
+        const projectName = storageMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        const info = await getStorageInfo(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(info));
+        return;
+      }
+
+      // POST /api/projects/:name/metrics/export - Export metrics to file
+      const exportMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics\/export$/);
+      if (req.method === "POST" && exportMatch) {
+        const projectName = exportMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const body = await readBody(req);
+        const { format = "json", start, end } = JSON.parse(body || "{}");
+
+        const startTime = start ? parseInt(start, 10) : undefined;
+        const endTime = end ? parseInt(end, 10) : undefined;
+
+        // Generate export file path
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const outputDir = path.join(projectDir, ".blissful-infra", "exports");
+        await fs.mkdir(outputDir, { recursive: true });
+        const outputPath = path.join(outputDir, `metrics-${timestamp}.${format}`);
+
+        let count: number;
+        if (format === "csv") {
+          count = await exportMetricsToCsv(projectDir, outputPath, { startTime, endTime });
+        } else {
+          count = await exportMetricsToJson(projectDir, outputPath, { startTime, endTime });
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, path: outputPath, count, format }));
+        return;
+      }
+
+      // DELETE /api/projects/:name/metrics - Clear metrics history
+      const clearMetricsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/metrics$/);
+      if (req.method === "DELETE" && clearMetricsMatch) {
+        const projectName = clearMetricsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+
+        await clearMetrics(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
         return;
       }
 
@@ -637,8 +743,10 @@ async function createProject(
   }
 }
 
-async function getContainerMetrics(projectDir: string): Promise<ProjectMetrics> {
+async function getContainerMetrics(projectDir: string, saveToStorage = true): Promise<ProjectMetrics> {
   const containers: ContainerMetrics[] = [];
+  const config = await loadConfig(projectDir);
+  const projectName = config?.name || path.basename(projectDir);
 
   try {
     // Get container IDs for this project
@@ -700,6 +808,39 @@ async function getContainerMetrics(projectDir: string): Promise<ProjectMetrics> 
 
   // Try to fetch HTTP metrics from Spring Boot Actuator
   const httpMetrics = await fetchActuatorMetrics();
+
+  // Save metrics to storage for historical access
+  if (saveToStorage && containers.length > 0) {
+    try {
+      const containerData: ContainerMetricsData[] = containers.map((c) => ({
+        name: c.name,
+        cpuPercent: c.cpuPercent,
+        memoryPercent: c.memoryPercent,
+        memoryUsage: c.memoryUsage,
+        memoryLimit: c.memoryLimit,
+        networkRx: c.networkRx,
+        networkTx: c.networkTx,
+      }));
+
+      const httpData: HttpMetricsData | undefined = httpMetrics
+        ? {
+            totalRequests: httpMetrics.totalRequests,
+            avgResponseTime: httpMetrics.avgResponseTime,
+            p50Latency: httpMetrics.p50Latency,
+            p95Latency: httpMetrics.p95Latency,
+            p99Latency: httpMetrics.p99Latency,
+            errorRate: httpMetrics.errorRate,
+            status2xx: httpMetrics.status2xx,
+            status4xx: httpMetrics.status4xx,
+            status5xx: httpMetrics.status5xx,
+          }
+        : undefined;
+
+      await saveMetrics(projectDir, projectName, containerData, httpData);
+    } catch {
+      // Ignore storage errors - don't affect metrics collection
+    }
+  }
 
   return { containers, httpMetrics, timestamp: Date.now() };
 }

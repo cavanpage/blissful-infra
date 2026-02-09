@@ -145,6 +145,29 @@ interface HealthHistory {
   services: Record<string, ('healthy' | 'unhealthy' | 'unknown')[]>
 }
 
+interface StoredMetrics {
+  timestamp: number
+  projectName: string
+  containers: Array<{
+    name: string
+    cpuPercent: number
+    memoryPercent: number
+  }>
+  http?: {
+    totalRequests: number
+    avgResponseTime: number
+    p50Latency?: number
+    p95Latency?: number
+    p99Latency?: number
+    errorRate?: number
+  }
+}
+
+interface HistoricalMetricsResponse {
+  metrics: StoredMetrics[]
+  count: number
+}
+
 // Time window options
 const TIME_WINDOWS = [
   { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
@@ -456,6 +479,71 @@ function App() {
     }
   }
 
+  const fetchHistoricalMetrics = async () => {
+    if (!selectedProject) return
+
+    try {
+      // Fetch historical data for the current time window
+      const startTime = Date.now() - timeWindow.value * 1000
+      const res = await fetch(
+        `/api/projects/${selectedProject.name}/metrics/history?start=${startTime}&limit=${timeWindow.dataPoints}`
+      )
+
+      if (res.ok) {
+        const data: HistoricalMetricsResponse = await res.json()
+
+        if (data.metrics.length > 0) {
+          // Convert historical metrics to chart format
+          const timestamps: number[] = []
+          const containers: Record<string, { cpu: number[]; memory: number[] }> = {}
+          const http = {
+            requestsPerSecond: [] as number[],
+            avgResponseTime: [] as number[],
+            p50Latency: [] as number[],
+            p95Latency: [] as number[],
+            p99Latency: [] as number[],
+            errorRate: [] as number[],
+            lastTotalRequests: 0,
+          }
+
+          let prevTotalRequests = 0
+
+          for (const m of data.metrics) {
+            timestamps.push(m.timestamp)
+
+            // Process container metrics
+            for (const c of m.containers) {
+              if (!containers[c.name]) {
+                containers[c.name] = { cpu: [], memory: [] }
+              }
+              containers[c.name].cpu.push(c.cpuPercent)
+              containers[c.name].memory.push(c.memoryPercent)
+            }
+
+            // Process HTTP metrics
+            if (m.http) {
+              const rps = prevTotalRequests > 0
+                ? Math.max(0, m.http.totalRequests - prevTotalRequests)
+                : 0
+              http.requestsPerSecond.push(rps)
+              http.avgResponseTime.push(m.http.avgResponseTime || 0)
+              http.p50Latency.push(m.http.p50Latency || 0)
+              http.p95Latency.push(m.http.p95Latency || 0)
+              http.p99Latency.push(m.http.p99Latency || 0)
+              http.errorRate.push(m.http.errorRate || 0)
+              prevTotalRequests = m.http.totalRequests
+              http.lastTotalRequests = m.http.totalRequests
+            }
+          }
+
+          setMetricsHistory({ timestamps, containers, http })
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch historical metrics:', e)
+    }
+  }
+
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
@@ -484,9 +572,14 @@ function App() {
       setCurrentHealth([])
       setMetricsLoaded(false)
 
-      // Fetch metrics and health
-      fetchMetrics()
-      fetchHealth()
+      // Load historical metrics first, then start polling for new data
+      const loadData = async () => {
+        await fetchHistoricalMetrics()
+        setMetricsLoaded(true)
+        fetchMetrics()
+        fetchHealth()
+      }
+      loadData()
 
       const metricsInterval = setInterval(fetchMetrics, timeWindow.intervalMs)
       const healthInterval = setInterval(fetchHealth, 5000) // Check health every 5 seconds
