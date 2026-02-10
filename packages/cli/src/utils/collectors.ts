@@ -356,18 +356,18 @@ export async function collectChaosResults(
     const jsonFiles = files.filter((f) => f.endsWith(".json")).sort().reverse();
 
     if (jsonFiles.length === 0) {
-      return { type: "chaos" as any, summary: "No chaos test results found", data: {} };
+      return { type: "chaos", summary: "No chaos test results found", data: {} };
     }
 
     const latest = JSON.parse(await fs.readFile(path.join(chaosDir, jsonFiles[0]), "utf8"));
 
     return {
-      type: "chaos" as any,
+      type: "chaos",
       summary: `Latest chaos test: score ${latest.score}/${latest.maxScore}, ${latest.results?.filter((r: any) => !r.passed).length || 0} failures`,
       data: { score: latest.score, maxScore: latest.maxScore, results: latest.results, recommendations: latest.recommendations },
     };
   } catch {
-    return { type: "chaos" as any, summary: "No chaos test results available", data: {} };
+    return { type: "chaos", summary: "No chaos test results available", data: {} };
   }
 }
 
@@ -384,18 +384,18 @@ export async function collectPerfResults(
     const jsonFiles = files.filter((f) => f.endsWith(".json")).sort().reverse();
 
     if (jsonFiles.length === 0) {
-      return { type: "perf" as any, summary: "No performance test results found", data: {} };
+      return { type: "perf", summary: "No performance test results found", data: {} };
     }
 
     const latest = JSON.parse(await fs.readFile(path.join(perfDir, jsonFiles[0]), "utf8"));
 
     return {
-      type: "perf" as any,
+      type: "perf",
       summary: `Latest perf test: ${latest.requests?.total || 0} requests, p95=${latest.latency?.p95?.toFixed(1) || "?"}ms`,
       data: latest,
     };
   } catch {
-    return { type: "perf" as any, summary: "No performance test results available", data: {} };
+    return { type: "perf", summary: "No performance test results available", data: {} };
   }
 }
 

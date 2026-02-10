@@ -1,9 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import fs from "node:fs/promises";
 import path from "node:path";
-import { loadConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
 import {
   ensureRolloutsAvailable,
   getRolloutStatus,
@@ -12,34 +11,13 @@ import {
   abortRollout,
   pauseRollout,
   resumeRollout,
-  setRolloutImage,
-  undoRollout,
 } from "../utils/rollouts.js";
 
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
-}
-
-function getNamespace(config: any): string {
+function getNamespace(config: ProjectConfig | null): string {
   return config?.kubernetes?.namespace || config?.name || "default";
 }
 
-function getProjectName(config: any, projectDir: string): string {
+function getProjectName(config: ProjectConfig | null, projectDir: string): string {
   return config?.name || path.basename(projectDir);
 }
 

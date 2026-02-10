@@ -4,7 +4,7 @@ import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig, type ProjectConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
 
 interface PipelineOptions {
   local?: boolean;
@@ -17,25 +17,6 @@ interface PipelineStage {
   name: string;
   status: "pending" | "running" | "success" | "failed" | "skipped";
   duration?: number;
-}
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
 }
 
 async function detectProjectType(projectDir: string): Promise<"gradle" | "maven" | "npm" | "go" | "unknown"> {

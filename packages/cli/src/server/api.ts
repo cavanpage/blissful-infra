@@ -2,8 +2,13 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig, type ProjectConfig } from "../utils/config.js";
-import { collectDockerLogs } from "../utils/collectors.js";
+import { loadConfig } from "../utils/config.js";
+import { toExecError } from "../utils/errors.js";
+import {
+  collectDockerLogs,
+  collectContext,
+  formatContextForPrompt,
+} from "../utils/collectors.js";
 import {
   checkOllamaRunning,
   selectModel,
@@ -11,7 +16,6 @@ import {
   chat,
   type ChatMessage,
 } from "../utils/ollama.js";
-import { collectContext, formatContextForPrompt } from "../utils/collectors.js";
 import {
   saveMetrics,
   loadMetrics,
@@ -195,7 +199,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true }));
         } catch (error) {
-          const execaError = error as { stderr?: string; message?: string };
+          const execaError = toExecError(error);
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             success: false,
@@ -633,7 +637,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true, environment: env }));
         } catch (error) {
-          const execaError = error as { stderr?: string; message?: string };
+          const execaError = toExecError(error);
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             success: false,
@@ -663,7 +667,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true, environment: env }));
         } catch (error) {
-          const execaError = error as { stderr?: string; message?: string };
+          const execaError = toExecError(error);
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             success: false,
@@ -706,7 +710,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ success: true }));
         } catch (error) {
-          const execaError = error as { stderr?: string; message?: string };
+          const execaError = toExecError(error);
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             success: false,
@@ -919,7 +923,7 @@ async function createProject(
     // Get the CLI path
     const cliPath = path.join(__dirname, "..", "index.js");
 
-    const result = await execa("node", [cliPath, ...args], {
+    await execa("node", [cliPath, ...args], {
       cwd: workingDir,
       stdio: "pipe",
     });
@@ -927,7 +931,7 @@ async function createProject(
     return { success: true };
   } catch (error) {
     // Extract stderr for more useful error messages
-    const execaError = error as { stderr?: string; message?: string };
+    const execaError = toExecError(error);
     const errorMessage = execaError.stderr || execaError.message || "Failed to create project";
     return {
       success: false,

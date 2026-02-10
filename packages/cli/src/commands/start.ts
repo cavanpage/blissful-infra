@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import { execa } from "execa";
 import { copyTemplate, linkTemplate, getAvailableTemplates } from "../utils/template.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
+import { toExecError } from "../utils/errors.js";
 
 interface StartOptions {
   backend?: string;
@@ -357,8 +358,9 @@ docker-compose.override.yaml
       startSpinner.succeed("Containers started");
     } catch (error) {
       startSpinner.fail("Failed to start containers");
-      if (error instanceof Error && "stderr" in error) {
-        console.error(chalk.red((error as { stderr: string }).stderr));
+      const execError = toExecError(error);
+      if (execError.stderr) {
+        console.error(chalk.red(execError.stderr));
       }
       console.log();
       console.log(chalk.yellow("Project created but failed to start. Try:"));

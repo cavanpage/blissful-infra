@@ -3,25 +3,7 @@ import chalk from "chalk";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
-}
+import { findProjectDir } from "../utils/config.js";
 
 export async function logsAction(name?: string, opts: { follow?: boolean; lines?: string; service?: string } = {}): Promise<void> {
   const projectDir = await findProjectDir(name);

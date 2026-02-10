@@ -1,16 +1,14 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import fs from "node:fs/promises";
 import path from "node:path";
-import { loadConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir } from "../utils/config.js";
 import { analyzeSystem, type AnalysisResult } from "../utils/analyzer.js";
 import {
   recordIncident,
   getKnowledgeBaseStats,
   initializeKnowledgeBase,
   searchIncidents,
-  updateFixOutcome,
 } from "../utils/knowledge-base.js";
 
 interface AnalyzeOptions {
@@ -18,25 +16,6 @@ interface AnalyzeOptions {
   json?: boolean;
   record?: boolean;
   k8s?: boolean;
-}
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
 }
 
 function formatAnalysisResult(result: AnalysisResult): void {

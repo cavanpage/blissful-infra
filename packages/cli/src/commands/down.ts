@@ -4,29 +4,8 @@ import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig } from "../utils/config.js";
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  // If name provided, look for that directory
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  // Check current directory
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
-}
-
+import { findProjectDir } from "../utils/config.js";
+import { toExecError } from "../utils/errors.js";
 export async function downAction(name?: string, opts: { volumes?: boolean } = {}): Promise<void> {
   // Find the project directory
   const projectDir = await findProjectDir(name);
@@ -70,7 +49,7 @@ export async function downAction(name?: string, opts: { volumes?: boolean } = {}
     }
   } catch (error) {
     spinner.fail("Failed to stop environment");
-    const execaError = error as { stderr?: string };
+    const execaError = toExecError(error);
     if (execaError.stderr?.includes("Cannot connect to the Docker daemon")) {
       console.error(chalk.red("Docker is not running."));
       console.error(chalk.dim("Please start Docker and try again."));
