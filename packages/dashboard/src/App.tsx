@@ -33,6 +33,15 @@ import {
   CheckCircle,
   XCircle,
   HelpCircle,
+  GitBranch,
+  Server,
+  ArrowUpCircle,
+  RotateCcw,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Download,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 
 interface Project {
@@ -202,6 +211,48 @@ interface AlertsResponse {
   recentHistory: TriggeredAlert[]
 }
 
+interface PipelineStage {
+  name: string
+  status: 'success' | 'failure' | 'running' | 'skipped' | 'pending'
+}
+
+interface PipelineData {
+  lastRun?: {
+    status: 'success' | 'failure' | 'running' | 'unknown'
+    duration?: number
+    timestamp?: string
+    stages: PipelineStage[]
+  }
+  jenkinsUrl?: string
+}
+
+interface EnvironmentInfo {
+  name: string
+  version: string
+  status: 'Synced' | 'OutOfSync' | 'Progressing' | 'Missing' | 'Unknown'
+  health: 'Healthy' | 'Degraded' | 'Progressing' | 'Missing' | 'Unknown'
+  replicas: string
+  lastDeployed?: string
+}
+
+interface LogConfig {
+  maxFileSize: number
+  maxRetentionDays: number
+  maxFiles: number
+  persist: boolean
+}
+
+interface LogStats {
+  totalSize: number
+  fileCount: number
+}
+
+interface MetricsStorage {
+  totalSize: number
+  dataPoints: number
+  fileCount: number
+}
+
 // Time window options
 const TIME_WINDOWS = [
   { label: '1m', value: 60, dataPoints: 60, intervalMs: 1000 },
@@ -338,7 +389,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'pipeline' | 'environments' | 'settings'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
     timestamps: [],
@@ -357,6 +408,27 @@ function App() {
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const [activeAlerts, setActiveAlerts] = useState<TriggeredAlert[]>([])
+
+  // Pipeline state
+  const [pipelineData, setPipelineData] = useState<PipelineData | null>(null)
+  const [pipelineRunning, setPipelineRunning] = useState(false)
+  const [pipelineOptions, setPipelineOptions] = useState({ push: true, skipTests: false, skipScan: false })
+
+  // Environments state
+  const [environments, setEnvironments] = useState<EnvironmentInfo[]>([])
+  const [deployingEnv, setDeployingEnv] = useState<string | null>(null)
+  const [rollingBackEnv, setRollingBackEnv] = useState<string | null>(null)
+
+  // Settings state
+  const [alertThresholds, setAlertThresholds] = useState<AlertThreshold[]>([])
+  const [logConfig, setLogConfig] = useState<LogConfig>({ maxFileSize: 10, maxRetentionDays: 30, maxFiles: 10, persist: true })
+  const [logStats, setLogStats] = useState<LogStats>({ totalSize: 0, fileCount: 0 })
+  const [metricsStorage, setMetricsStorage] = useState<MetricsStorage>({ totalSize: 0, dataPoints: 0, fileCount: 0 })
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [editingThreshold, setEditingThreshold] = useState<string | null>(null)
+  const [editThresholdValues, setEditThresholdValues] = useState<Partial<AlertThreshold>>({})
+  const [newThreshold, setNewThreshold] = useState<Partial<AlertThreshold> | null>(null)
+
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -604,6 +676,243 @@ function App() {
     }
   }
 
+  // --- Pipeline ---
+  const fetchPipeline = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/pipeline`)
+      if (res.ok) {
+        const data = await res.json()
+        setPipelineData(data)
+      }
+    } catch (e) {
+      console.error('Failed to fetch pipeline:', e)
+    }
+  }
+
+  const runPipeline = async () => {
+    if (!selectedProject) return
+    setPipelineRunning(true)
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/pipeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pipelineOptions),
+      })
+      if (res.ok) {
+        await fetchPipeline()
+      } else {
+        const data = await res.json()
+        setErrorModal({ title: 'Pipeline Failed', message: data.error || 'Unknown error' })
+      }
+    } catch (e) {
+      console.error('Failed to run pipeline:', e)
+    } finally {
+      setPipelineRunning(false)
+    }
+  }
+
+  // --- Environments ---
+  const fetchEnvironments = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/environments`)
+      if (res.ok) {
+        const data = await res.json()
+        setEnvironments(data.environments || [])
+      }
+    } catch (e) {
+      console.error('Failed to fetch environments:', e)
+    }
+  }
+
+  const handleDeploy = async (env: string) => {
+    if (!selectedProject) return
+    setDeployingEnv(env)
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setErrorModal({ title: 'Deploy Failed', message: data.error || 'Unknown error' })
+      }
+      await fetchEnvironments()
+    } catch (e) {
+      console.error('Failed to deploy:', e)
+    } finally {
+      setDeployingEnv(null)
+    }
+  }
+
+  const handleRollback = async (env: string) => {
+    if (!selectedProject) return
+    setRollingBackEnv(env)
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ env }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setErrorModal({ title: 'Rollback Failed', message: data.error || 'Unknown error' })
+      }
+      await fetchEnvironments()
+    } catch (e) {
+      console.error('Failed to rollback:', e)
+    } finally {
+      setRollingBackEnv(null)
+    }
+  }
+
+  // --- Settings ---
+  const fetchSettings = async () => {
+    if (!selectedProject) return
+    setSettingsLoading(true)
+    try {
+      const [alertsRes, logConfigRes, metricsRes] = await Promise.all([
+        fetch(`/api/projects/${selectedProject.name}/alerts`),
+        fetch(`/api/projects/${selectedProject.name}/logs/config`),
+        fetch(`/api/projects/${selectedProject.name}/metrics/storage`),
+      ])
+      if (alertsRes.ok) {
+        const data: AlertsResponse = await alertsRes.json()
+        setAlertThresholds(data.config.thresholds)
+      }
+      if (logConfigRes.ok) {
+        const data = await logConfigRes.json()
+        if (data.config) setLogConfig(data.config)
+        if (data.stats) setLogStats(data.stats)
+      }
+      if (metricsRes.ok) {
+        const data = await metricsRes.json()
+        setMetricsStorage(data)
+      }
+    } catch (e) {
+      console.error('Failed to fetch settings:', e)
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
+  const saveAlertThreshold = async (t: AlertThreshold) => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/alerts/thresholds/${t.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(t),
+      })
+      if (res.ok) {
+        setEditingThreshold(null)
+        await fetchSettings()
+      }
+    } catch (e) {
+      console.error('Failed to save threshold:', e)
+    }
+  }
+
+  const addAlertThreshold = async (t: Partial<AlertThreshold>) => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/alerts/thresholds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(t),
+      })
+      if (res.ok) {
+        setNewThreshold(null)
+        await fetchSettings()
+      }
+    } catch (e) {
+      console.error('Failed to add threshold:', e)
+    }
+  }
+
+  const deleteAlertThreshold = async (id: string) => {
+    if (!selectedProject) return
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/alerts/thresholds/${id}`, {
+        method: 'DELETE',
+      })
+      await fetchSettings()
+    } catch (e) {
+      console.error('Failed to delete threshold:', e)
+    }
+  }
+
+  const toggleThreshold = async (t: AlertThreshold) => {
+    await saveAlertThreshold({ ...t, enabled: !t.enabled })
+  }
+
+  const saveLogRetentionConfig = async () => {
+    if (!selectedProject) return
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/logs/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logConfig),
+      })
+    } catch (e) {
+      console.error('Failed to save log config:', e)
+    }
+  }
+
+  const handleLogRotate = async () => {
+    if (!selectedProject) return
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/logs/rotate`, { method: 'POST' })
+      await fetchSettings()
+    } catch (e) {
+      console.error('Failed to rotate logs:', e)
+    }
+  }
+
+  const handleClearLogs = async () => {
+    if (!selectedProject || !confirm('Are you sure you want to clear all stored logs?')) return
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/logs/stored`, { method: 'DELETE' })
+      await fetchSettings()
+    } catch (e) {
+      console.error('Failed to clear logs:', e)
+    }
+  }
+
+  const handleExportMetrics = async (format: 'json' | 'csv') => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/metrics/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format }),
+      })
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `metrics-${selectedProject.name}.${format}`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (e) {
+      console.error('Failed to export metrics:', e)
+    }
+  }
+
+  const handleClearMetrics = async () => {
+    if (!selectedProject || !confirm('Are you sure you want to clear all stored metrics?')) return
+    try {
+      await fetch(`/api/projects/${selectedProject.name}/metrics`, { method: 'DELETE' })
+      await fetchSettings()
+    } catch (e) {
+      console.error('Failed to clear metrics:', e)
+    }
+  }
+
   useEffect(() => {
     fetchProjects()
     fetchTemplates()
@@ -653,6 +962,28 @@ function App() {
       }
     }
   }, [selectedProject?.name, activeTab, timeWindow])
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'pipeline') {
+      fetchPipeline()
+      const interval = setInterval(fetchPipeline, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedProject?.name, activeTab])
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'environments') {
+      fetchEnvironments()
+      const interval = setInterval(fetchEnvironments, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedProject?.name, activeTab])
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'settings') {
+      fetchSettings()
+    }
+  }, [selectedProject?.name, activeTab])
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -841,6 +1172,33 @@ function App() {
         return 'bg-yellow-400'
       default:
         return 'bg-gray-400'
+    }
+  }
+
+  const envStatusBadge = (status: string) => {
+    switch (status) {
+      case 'Synced': return 'bg-green-900 text-green-300'
+      case 'OutOfSync': return 'bg-yellow-900 text-yellow-300'
+      case 'Progressing': return 'bg-blue-900 text-blue-300'
+      default: return 'bg-gray-800 text-gray-400'
+    }
+  }
+
+  const envHealthBadge = (health: string) => {
+    switch (health) {
+      case 'Healthy': return 'bg-green-900 text-green-300'
+      case 'Degraded': return 'bg-red-900 text-red-300'
+      case 'Progressing': return 'bg-blue-900 text-blue-300'
+      default: return 'bg-gray-800 text-gray-400'
+    }
+  }
+
+  const pipelineStageBorder = (status: string) => {
+    switch (status) {
+      case 'success': return 'border-green-500 bg-green-900/30'
+      case 'failure': return 'border-red-500 bg-red-900/30'
+      case 'running': return 'border-blue-500 bg-blue-900/30'
+      default: return 'border-gray-600 bg-gray-800/30'
     }
   }
 
@@ -1036,6 +1394,39 @@ function App() {
                 >
                   <BarChart3 className="w-4 h-4" />
                   Metrics
+                </button>
+                <button
+                  onClick={() => setActiveTab('pipeline')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'pipeline'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <GitBranch className="w-4 h-4" />
+                  Pipeline
+                </button>
+                <button
+                  onClick={() => setActiveTab('environments')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'environments'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <Server className="w-4 h-4" />
+                  Environments
+                </button>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'settings'
+                      ? 'border-blue-400 text-blue-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <SettingsIcon className="w-4 h-4" />
+                  Settings
                 </button>
               </div>
 
@@ -1396,6 +1787,419 @@ function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              ) : activeTab === 'pipeline' ? (
+                <div className="flex-1 overflow-auto p-6">
+                  {pipelineData?.lastRun ? (
+                    <div className="space-y-6">
+                      {/* Stage Visualization */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-4">Pipeline Stages</h3>
+                        <div className="flex items-center gap-2 overflow-x-auto">
+                          {(pipelineData.lastRun.stages.length > 0
+                            ? pipelineData.lastRun.stages
+                            : [
+                                { name: 'Build', status: 'pending' as const },
+                                { name: 'Test', status: 'pending' as const },
+                                { name: 'Containerize', status: 'pending' as const },
+                                { name: 'Scan', status: 'pending' as const },
+                                { name: 'Deploy', status: 'pending' as const },
+                              ]
+                          ).map((stage, i, arr) => (
+                            <div key={stage.name} className="flex items-center gap-2">
+                              <div className={`border-2 rounded-lg px-4 py-3 min-w-[120px] text-center ${pipelineStageBorder(stage.status)}`}>
+                                <div className="text-sm font-medium">{stage.name}</div>
+                                <div className="text-xs text-gray-400 mt-1 capitalize">{stage.status}</div>
+                              </div>
+                              {i < arr.length - 1 && <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Last Run Info */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-3">Last Run</h3>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <div className="text-xs text-gray-500">Status</div>
+                            <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
+                              pipelineData.lastRun.status === 'success' ? 'bg-green-900 text-green-300' :
+                              pipelineData.lastRun.status === 'failure' ? 'bg-red-900 text-red-300' :
+                              pipelineData.lastRun.status === 'running' ? 'bg-blue-900 text-blue-300' :
+                              'bg-gray-700 text-gray-400'
+                            }`}>
+                              {pipelineData.lastRun.status}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Duration</div>
+                            <div className="text-sm mt-1">{pipelineData.lastRun.duration ? `${pipelineData.lastRun.duration}s` : '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500">Timestamp</div>
+                            <div className="text-sm mt-1">{pipelineData.lastRun.timestamp ? new Date(pipelineData.lastRun.timestamp).toLocaleString() : '-'}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Run Pipeline */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-3">Run Pipeline</h3>
+                        <div className="flex flex-wrap items-center gap-4 mb-4">
+                          <label className="flex items-center gap-2 text-sm text-gray-300">
+                            <input type="checkbox" checked={pipelineOptions.push} onChange={(e) => setPipelineOptions(p => ({ ...p, push: e.target.checked }))} className="rounded" />
+                            Push image
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-300">
+                            <input type="checkbox" checked={pipelineOptions.skipTests} onChange={(e) => setPipelineOptions(p => ({ ...p, skipTests: e.target.checked }))} className="rounded" />
+                            Skip tests
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-300">
+                            <input type="checkbox" checked={pipelineOptions.skipScan} onChange={(e) => setPipelineOptions(p => ({ ...p, skipScan: e.target.checked }))} className="rounded" />
+                            Skip scan
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={runPipeline}
+                            disabled={pipelineRunning}
+                            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
+                          >
+                            {pipelineRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                            {pipelineRunning ? 'Running...' : 'Run Pipeline'}
+                          </button>
+                          {pipelineData.jenkinsUrl && (
+                            <a href={pipelineData.jenkinsUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline flex items-center gap-1">
+                              <ExternalLink className="w-3 h-3" /> Jenkins
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 min-h-[300px]">
+                      <div className="text-center">
+                        <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No pipeline runs yet</p>
+                        <button
+                          onClick={runPipeline}
+                          disabled={pipelineRunning}
+                          className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 mx-auto"
+                        >
+                          {pipelineRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                          {pipelineRunning ? 'Running...' : 'Run Pipeline'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'environments' ? (
+                <div className="flex-1 overflow-auto p-6">
+                  {environments.length > 0 ? (
+                    <div className="bg-gray-800 rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-700 text-left text-gray-400">
+                            <th className="px-4 py-3">Environment</th>
+                            <th className="px-4 py-3">Version</th>
+                            <th className="px-4 py-3">Status</th>
+                            <th className="px-4 py-3">Health</th>
+                            <th className="px-4 py-3">Replicas</th>
+                            <th className="px-4 py-3">Last Deployed</th>
+                            <th className="px-4 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {environments.map((env) => (
+                            <tr key={env.name} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                              <td className="px-4 py-3 font-medium">{env.name}</td>
+                              <td className="px-4 py-3 font-mono text-xs">{env.version}</td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${envStatusBadge(env.status)}`}>
+                                  {env.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${envHealthBadge(env.health)}`}>
+                                  {env.health}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">{env.replicas}</td>
+                              <td className="px-4 py-3 text-gray-400">{env.lastDeployed ? new Date(env.lastDeployed).toLocaleString() : '-'}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleDeploy(env.name)}
+                                    disabled={deployingEnv === env.name}
+                                    className="text-blue-400 hover:text-blue-300 disabled:text-gray-600 text-xs flex items-center gap-1"
+                                  >
+                                    {deployingEnv === env.name ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                                    Deploy
+                                  </button>
+                                  <button
+                                    onClick={() => handleRollback(env.name)}
+                                    disabled={rollingBackEnv === env.name}
+                                    className="text-yellow-400 hover:text-yellow-300 disabled:text-gray-600 text-xs flex items-center gap-1"
+                                  >
+                                    {rollingBackEnv === env.name ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                                    Rollback
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 min-h-[300px]">
+                      <div className="text-center">
+                        <Server className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No environments found</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'settings' ? (
+                <div className="flex-1 overflow-auto p-6 space-y-6">
+                  {settingsLoading ? (
+                    <div className="flex items-center justify-center min-h-[200px]">
+                      <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
+                    </div>
+                  ) : (
+                    <>
+                      {/* Alert Thresholds */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-semibold text-gray-300">Alert Thresholds</h3>
+                          <button
+                            onClick={() => setNewThreshold({ name: '', metric: 'cpu', operator: '>', value: 80, severity: 'warning', enabled: true })}
+                            className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Add Threshold
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          {alertThresholds.map((t) => (
+                            <div key={t.id} className="flex items-center justify-between bg-gray-900 rounded-lg px-4 py-3">
+                              {editingThreshold === t.id ? (
+                                <div className="flex items-center gap-3 flex-1">
+                                  <input
+                                    value={editThresholdValues.value ?? t.value}
+                                    onChange={(e) => setEditThresholdValues(v => ({ ...v, value: Number(e.target.value) }))}
+                                    type="number"
+                                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 w-20 text-sm"
+                                  />
+                                  <select
+                                    value={editThresholdValues.operator ?? t.operator}
+                                    onChange={(e) => setEditThresholdValues(v => ({ ...v, operator: e.target.value }))}
+                                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                                  >
+                                    <option value=">">{'>'}</option>
+                                    <option value="<">{'<'}</option>
+                                    <option value=">=">{'>='}</option>
+                                    <option value="<=">{'<='}</option>
+                                  </select>
+                                  <select
+                                    value={editThresholdValues.severity ?? t.severity}
+                                    onChange={(e) => setEditThresholdValues(v => ({ ...v, severity: e.target.value as 'warning' | 'critical' }))}
+                                    className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                                  >
+                                    <option value="warning">Warning</option>
+                                    <option value="critical">Critical</option>
+                                  </select>
+                                  <button
+                                    onClick={() => saveAlertThreshold({ ...t, ...editThresholdValues } as AlertThreshold)}
+                                    className="text-green-400 hover:text-green-300"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => { setEditingThreshold(null); setEditThresholdValues({}) }}
+                                    className="text-gray-400 hover:text-gray-300"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-sm font-medium">{t.name}</span>
+                                    <span className="text-xs text-gray-500">{t.metric} {t.operator} {t.value}</span>
+                                    <span className={`px-2 py-0.5 rounded text-xs ${t.severity === 'critical' ? 'bg-red-900 text-red-300' : 'bg-yellow-900 text-yellow-300'}`}>
+                                      {t.severity}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => toggleThreshold(t)} className="text-gray-400 hover:text-gray-200" title={t.enabled ? 'Disable' : 'Enable'}>
+                                      {t.enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                    </button>
+                                    <button
+                                      onClick={() => { setEditingThreshold(t.id); setEditThresholdValues({}) }}
+                                      className="text-gray-400 hover:text-blue-400"
+                                    >
+                                      <SettingsIcon className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => deleteAlertThreshold(t.id)} className="text-gray-400 hover:text-red-400">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                          {newThreshold && (
+                            <div className="flex items-center gap-3 bg-gray-900 rounded-lg px-4 py-3">
+                              <input
+                                value={newThreshold.name || ''}
+                                onChange={(e) => setNewThreshold(t => ({ ...t, name: e.target.value }))}
+                                placeholder="Name"
+                                className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm flex-1"
+                              />
+                              <select
+                                value={newThreshold.metric || 'cpu'}
+                                onChange={(e) => setNewThreshold(t => ({ ...t, metric: e.target.value }))}
+                                className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                              >
+                                <option value="cpu">CPU</option>
+                                <option value="memory">Memory</option>
+                                <option value="errorRate">Error Rate</option>
+                                <option value="responseTime">Response Time</option>
+                              </select>
+                              <select
+                                value={newThreshold.operator || '>'}
+                                onChange={(e) => setNewThreshold(t => ({ ...t, operator: e.target.value }))}
+                                className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+                              >
+                                <option value=">">{'>'}</option>
+                                <option value="<">{'<'}</option>
+                                <option value=">=">{'>='}</option>
+                                <option value="<=">{'<='}</option>
+                              </select>
+                              <input
+                                value={newThreshold.value ?? 80}
+                                onChange={(e) => setNewThreshold(t => ({ ...t, value: Number(e.target.value) }))}
+                                type="number"
+                                className="bg-gray-700 border border-gray-600 rounded px-2 py-1 w-20 text-sm"
+                              />
+                              <button
+                                onClick={() => addAlertThreshold(newThreshold)}
+                                className="text-green-400 hover:text-green-300"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setNewThreshold(null)}
+                                className="text-gray-400 hover:text-gray-300"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                          {alertThresholds.length === 0 && !newThreshold && (
+                            <div className="text-center text-gray-500 py-4 text-sm">No thresholds configured</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Log Management */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-4">Log Management</h3>
+                        <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">Total Size:</span>{' '}
+                            <span>{(logStats.totalSize / 1024).toFixed(1)} KB</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Files:</span>{' '}
+                            <span>{logStats.fileCount}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Max File Size (MB)</label>
+                            <input
+                              type="number"
+                              value={logConfig.maxFileSize}
+                              onChange={(e) => setLogConfig(c => ({ ...c, maxFileSize: Number(e.target.value) }))}
+                              className="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-full"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Retention (days)</label>
+                            <input
+                              type="number"
+                              value={logConfig.maxRetentionDays}
+                              onChange={(e) => setLogConfig(c => ({ ...c, maxRetentionDays: Number(e.target.value) }))}
+                              className="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-full"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Max Files</label>
+                            <input
+                              type="number"
+                              value={logConfig.maxFiles}
+                              onChange={(e) => setLogConfig(c => ({ ...c, maxFiles: Number(e.target.value) }))}
+                              className="bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-sm w-full"
+                            />
+                          </div>
+                          <div className="flex items-end">
+                            <label className="flex items-center gap-2 text-sm text-gray-300">
+                              <input
+                                type="checkbox"
+                                checked={logConfig.persist}
+                                onChange={(e) => setLogConfig(c => ({ ...c, persist: e.target.checked }))}
+                                className="rounded"
+                              />
+                              Persist logs
+                            </label>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button onClick={saveLogRetentionConfig} className="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-sm transition-colors">
+                            Save Config
+                          </button>
+                          <button onClick={handleLogRotate} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1">
+                            <RefreshCw className="w-3 h-3" /> Rotate Logs
+                          </button>
+                          <button onClick={handleClearLogs} className="bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1">
+                            <Trash2 className="w-3 h-3" /> Clear All Logs
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Metrics Management */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-4">Metrics Management</h3>
+                        <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">Total Size:</span>{' '}
+                            <span>{(metricsStorage.totalSize / 1024).toFixed(1)} KB</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Data Points:</span>{' '}
+                            <span>{metricsStorage.dataPoints}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Files:</span>{' '}
+                            <span>{metricsStorage.fileCount}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => handleExportMetrics('json')} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1">
+                            <Download className="w-3 h-3" /> Export JSON
+                          </button>
+                          <button onClick={() => handleExportMetrics('csv')} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1">
+                            <Download className="w-3 h-3" /> Export CSV
+                          </button>
+                          <button onClick={handleClearMetrics} className="bg-red-900 hover:bg-red-800 text-red-300 px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1">
+                            <Trash2 className="w-3 h-3" /> Clear All Metrics
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : null}
             </>
