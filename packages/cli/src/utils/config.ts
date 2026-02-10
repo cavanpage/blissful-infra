@@ -23,6 +23,20 @@ export interface PipelineConfig {
   buildCache?: boolean;
 }
 
+export interface CanaryConfig {
+  enabled?: boolean;
+  steps?: Array<{ weight: number; pause: string }>;
+  analysis?: {
+    interval?: string;
+    failureLimit?: number;
+    metrics?: Array<{
+      name: string;
+      threshold: string;
+      query?: string;
+    }>;
+  };
+}
+
 export interface ProjectConfig {
   name: string;
   type: string;
@@ -35,6 +49,8 @@ export interface ProjectConfig {
   kubernetes?: KubernetesConfig;
   argocd?: ArgoCDConfig;
   pipeline?: PipelineConfig;
+  // Phase 4 additions
+  canary?: CanaryConfig;
 }
 
 export async function loadConfig(projectDir?: string): Promise<ProjectConfig | null> {

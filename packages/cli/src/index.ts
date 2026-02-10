@@ -17,6 +17,13 @@ import { rollbackCommand, rollbackAction } from "./commands/rollback.js";
 import { statusCommand, statusAction } from "./commands/status.js";
 import { pipelineCommand, pipelineAction } from "./commands/pipeline.js";
 import { jenkinsCommand } from "./commands/jenkins.js";
+// Phase 4 commands
+import { perfCommand, perfAction } from "./commands/perf.js";
+import { chaosCommand, chaosAction } from "./commands/chaos.js";
+import { compareCommand, compareAction } from "./commands/compare.js";
+import { canaryCommand } from "./commands/canary.js";
+// Phase 5 commands
+import { analyzeCommand, analyzeAction, suggestCommand, suggestAction } from "./commands/analyze.js";
 
 const program = new Command();
 
@@ -44,6 +51,16 @@ program.addCommand(statusCommand);
 program.addCommand(pipelineCommand);
 program.addCommand(jenkinsCommand);
 
+// Phase 4 commands (Resilience)
+program.addCommand(perfCommand);
+program.addCommand(chaosCommand);
+program.addCommand(compareCommand);
+program.addCommand(canaryCommand);
+
+// Phase 5 commands (Intelligence)
+program.addCommand(analyzeCommand);
+program.addCommand(suggestCommand);
+
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {
   try {
@@ -61,7 +78,7 @@ async function main() {
 
   // If first arg could be a project name (not a known command or flag)
   if (args.length >= 1 && !args[0].startsWith("-")) {
-    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "help"];
+    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "perf", "chaos", "compare", "canary", "analyze", "suggest", "help"];
     const firstArg = args[0];
 
     if (!knownCommands.includes(firstArg) && await isProjectDir(firstArg)) {
@@ -146,6 +163,67 @@ async function main() {
         .option("--skip-scan", "Skip security scan")
         .action(async (opts: { local?: boolean; push?: boolean; skipTests?: boolean; skipScan?: boolean }) => {
           await pipelineAction(projectName, opts);
+        });
+
+      // Phase 4 commands
+      projectProgram
+        .command("perf")
+        .description("Run performance tests with k6")
+        .option("-e, --env <environment>", "Target environment", "local")
+        .option("-d, --duration <duration>", "Duration per stage", "30s")
+        .option("-u, --vus <count>", "Maximum virtual users", "50")
+        .option("-b, --base-url <url>", "Base URL to test against")
+        .option("-s, --script <path>", "Custom k6 script path")
+        .option("--json", "Output results as JSON")
+        .action(async (opts: { env?: string; duration?: string; vus?: string; baseUrl?: string; script?: string; json?: boolean }) => {
+          await perfAction(projectName, opts);
+        });
+
+      projectProgram
+        .command("chaos")
+        .description("Run chaos engineering experiments (FMEA)")
+        .option("-e, --env <environment>", "Target environment", "local")
+        .option("-s, --scenario <name>", "Run specific scenario")
+        .option("-d, --duration <duration>", "Duration per experiment", "30s")
+        .option("-i, --intensity <level>", "Chaos intensity (low, medium, high)", "medium")
+        .option("--service <name>", "Target specific service")
+        .option("--dry-run", "Show what would happen without running")
+        .option("--json", "Output results as JSON")
+        .action(async (opts: { env?: string; scenario?: string; duration?: string; intensity?: "low" | "medium" | "high"; service?: string; dryRun?: boolean; json?: boolean }) => {
+          await chaosAction(projectName, opts);
+        });
+
+      projectProgram
+        .command("compare")
+        .description("Compare performance between two versions")
+        .requiredOption("--old <ref>", "Old version git ref")
+        .requiredOption("--new <ref>", "New version git ref")
+        .option("-d, --duration <duration>", "Duration per version", "15s")
+        .option("-u, --vus <count>", "Virtual users", "20")
+        .option("-b, --base-url <url>", "Base URL", "http://localhost:8080")
+        .option("--json", "Output results as JSON")
+        .action(async (opts: { old: string; new: string; duration?: string; vus?: string; baseUrl?: string; json?: boolean }) => {
+          await compareAction(projectName, opts);
+        });
+
+      // Phase 5 commands
+      projectProgram
+        .command("analyze")
+        .description("Analyze system state and find root causes")
+        .option("-i, --incident <id>", "Analyze specific incident")
+        .option("--json", "Output results as JSON")
+        .option("--record", "Record findings as incident")
+        .option("--k8s", "Include Kubernetes context")
+        .action(async (opts: { incident?: string; json?: boolean; record?: boolean; k8s?: boolean }) => {
+          await analyzeAction(projectName, opts);
+        });
+
+      projectProgram
+        .command("suggest")
+        .description("Get proactive improvement suggestions")
+        .option("--json", "Output results as JSON")
+        .action(async (opts: { json?: boolean }) => {
+          await suggestAction(projectName, opts);
         });
 
       // Parse project-specific command

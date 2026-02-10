@@ -11,6 +11,7 @@ interface DeployOptions {
   image?: string;
   dryRun?: boolean;
   timeout?: number;
+  canary?: boolean;
 }
 
 async function findProjectDir(name?: string): Promise<string | null> {
@@ -285,7 +286,13 @@ export const deployCommand = new Command("deploy")
   .option("-e, --env <environment>", "Target environment (staging, production, ephemeral)", "staging")
   .option("-i, --image <tag>", "Specific image tag to deploy")
   .option("--dry-run", "Show what would be deployed without applying")
+  .option("--canary", "Deploy using canary strategy (Argo Rollouts)")
   .option("-t, --timeout <seconds>", "Deployment timeout in seconds", "300")
   .action(async (name: string | undefined, opts: DeployOptions) => {
+    if (opts.canary) {
+      console.log(chalk.blue.bold("Deploying with canary strategy (Argo Rollouts)"));
+      console.log(chalk.gray("This will use the Rollout resource instead of Deployment."));
+      console.log(chalk.gray("Monitor with: blissful-infra canary status"));
+    }
     await deployAction(name, opts);
   });

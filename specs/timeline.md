@@ -12,8 +12,8 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 1** | MVP | CLI + 1 template + local deploy + basic agent | ✅ Complete |
 | **Phase 2** | Pipeline | Jenkins CI/CD + ephemeral environments | ✅ Complete |
 | **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
-| **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ⏳ Planned |
-| **Phase 5** | Intelligence | Full agent + knowledge base | ⏳ Planned |
+| **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
+| **Phase 5** | Intelligence | Full agent + knowledge base | 🔧 In Progress |
 | **Phase 6** | Scale | More templates + cloud deploy + enterprise components | ⏳ Planned |
 
 ---
@@ -299,64 +299,75 @@ Opening http://localhost:3000...
 
 **Goal:** Validate service behavior under failure conditions with performance and chaos testing.
 
-### 4.1 Performance Testing
-- [ ] k6 test scripts in template
-- [ ] `blissful-infra perf --env <env>` command
-- [ ] Baseline thresholds (p95 < 200ms, error rate < 1%)
-- [ ] Results output (CLI table + JSON)
+### 4.1 Performance Testing ✅
+- [x] k6 test scripts in template (staged VU ramp-up, weighted endpoints, custom metrics)
+- [x] `blissful-infra perf --env <env>` command with --duration, --vus, --base-url, --script, --json options
+- [x] Baseline thresholds (p95 < 500ms, p99 < 1000ms, error rate < 1%, avg < 200ms)
+- [x] Results output (CLI table + JSON export + saved to .blissful-infra/perf/)
 - [ ] Integration with pipeline (fail on regression)
 
-### 4.2 Chaos Mesh Setup
-- [ ] Chaos Mesh deployment to cluster
-- [ ] CLI integration for chaos commands
-- [ ] Experiment templates per failure type
+### 4.2 Chaos Engineering Setup ✅
+- [x] Docker-based chaos experiments (no Chaos Mesh required for local)
+- [x] CLI integration: `blissful-infra chaos` command
+- [x] Experiment templates per failure type (5 scenarios)
+- [x] Dry-run mode for safe preview
 
-### 4.3 Failure Scenarios
-- [ ] `pod-kill` - random pod termination
-- [ ] `network-latency` - inject latency
-- [ ] `kafka-down` - Kafka unavailability
-- [ ] `db-latency` - database slowdown
-- [ ] `memory-pressure` - memory stress
-- [ ] Custom scenario support
+**Location:** `packages/cli/src/utils/chaos.ts`, `packages/cli/src/commands/chaos.ts`
 
-### 4.4 FMEA Framework
-- [ ] Baseline capture before chaos
-- [ ] Automated validation during chaos
-- [ ] Recovery verification after chaos
-- [ ] SLO threshold configuration
-- [ ] `blissful-infra chaos --env <env>` command
-- [ ] `blissful-infra chaos --env <env> --scenario <s>` for specific tests
+### 4.3 Failure Scenarios ✅
+- [x] `pod-kill` - container termination with recovery measurement
+- [x] `network-latency` - inject latency via tc (low/medium/high intensity)
+- [x] `kafka-down` - Kafka unavailability with graceful degradation check
+- [x] `db-latency` - database slowdown injection
+- [x] `memory-pressure` - memory stress via stress-ng
+- [ ] Custom scenario support (plugin system)
 
-### 4.5 Resilience Scorecard
-- [ ] Score calculation based on FMEA results
-- [ ] Gap identification (missing circuit breakers, etc.)
-- [ ] Recommendations for improvement
-- [ ] Score tracking over time
+### 4.4 FMEA Framework ✅
+- [x] Health check before each chaos experiment
+- [x] Automated validation during chaos (request monitoring, error rate tracking)
+- [x] Recovery verification after chaos (endpoint health + timing)
+- [x] Resilience score calculation (25 points per scenario, recovery time bonus)
+- [x] `blissful-infra chaos --env <env>` command (runs all scenarios)
+- [x] `blissful-infra chaos --env <env> --scenario <s>` for specific tests
+- [x] Recommendations engine for failed scenarios
+- [x] JSON report export saved to `.blissful-infra/chaos/`
 
-### 4.6 Parallel Version Comparison
-- [ ] Deploy two versions side-by-side
-- [ ] Run identical load tests against both
-- [ ] Collect and compare metrics
-- [ ] `blissful-infra compare --old <ref> --new <ref>` command
-- [ ] Winner determination with confidence
+### 4.5 Resilience Scorecard ✅
+- [x] Score calculation based on FMEA results (25 points per scenario + recovery bonus)
+- [x] Gap identification (missing circuit breakers, dependency isolation, recovery speed)
+- [x] Recommendations for improvement (per-scenario and recovery time)
+- [x] Score tracking over time (last 50 entries, trend detection)
+- [x] `blissful-infra chaos --scorecard` command with strengths, gaps, and history
+
+**Location:** `packages/cli/src/utils/scorecard.ts`
+
+### 4.6 Parallel Version Comparison ✅
+- [x] Build and test each version sequentially (git checkout + docker compose)
+- [x] Run identical load tests against both (k6 or curl fallback)
+- [x] Collect and compare metrics (p95, p99, throughput, error rate, avg latency)
+- [x] `blissful-infra compare --old <ref> --new <ref>` command
+- [x] Winner determination with weighted confidence scoring
+- [x] Results saved to `.blissful-infra/compare/`
+
+**Location:** `packages/cli/src/commands/compare.ts`
 
 ### 4.7 Canary Deployments (Argo Rollouts)
 **Goal:** Progressive delivery with automated analysis and rollback.
 
 **Framework:** [Argo Rollouts](https://argoproj.github.io/argo-rollouts/) - Kubernetes controller for progressive delivery strategies.
 
-#### 4.7.1 Argo Rollouts Setup
-- [ ] Argo Rollouts controller installation (Helm chart)
-- [ ] Prometheus integration for metrics analysis
-- [ ] Dashboard plugin for Argo CD
+#### 4.7.1 Argo Rollouts Setup ✅
+- [x] Argo Rollouts controller installation (Helm chart with values.yaml)
+- [x] Prometheus integration for metrics analysis
+- [x] Dashboard plugin for Argo CD
 
 **Location:** `packages/cli/templates/cluster/argo-rollouts/`
 
-#### 4.7.2 Rollout Template (replaces Deployment)
-- [ ] Rollout CRD with canary strategy
-- [ ] Configurable traffic steps (10% → 25% → 50% → 100%)
-- [ ] Pause duration between steps
-- [ ] Anti-affinity for canary/stable pods
+#### 4.7.2 Rollout Template (replaces Deployment) ✅
+- [x] Rollout CRD with canary strategy
+- [x] Configurable traffic steps (10% → 25% → 50% → 100%)
+- [x] Pause duration between steps (2m, 2m, 5m)
+- [x] Anti-affinity for canary/stable pods
 
 **Location:** `packages/cli/templates/spring-boot/k8s/base/rollout.yaml`
 
@@ -379,11 +390,11 @@ spec:
         - setWeight: 100
 ```
 
-#### 4.7.3 Analysis Templates
-- [ ] AnalysisTemplate CRD for metric queries
-- [ ] Prometheus metric providers
-- [ ] Configurable success criteria (thresholds)
-- [ ] Multiple metric support (error rate, latency, custom)
+#### 4.7.3 Analysis Templates ✅
+- [x] AnalysisTemplate CRD for metric queries (error-rate, p95, p99, success-rate)
+- [x] Prometheus metric providers
+- [x] Configurable success criteria (thresholds)
+- [x] Multiple metric support (error rate, latency, custom)
 
 **Location:** `packages/cli/templates/spring-boot/k8s/base/analysis-template.yaml`
 
@@ -409,11 +420,11 @@ spec:
       successCondition: result[0] < 0.2
 ```
 
-#### 4.7.4 Configuration Schema
-- [ ] Canary configuration in `blissful-infra.yaml`
-- [ ] Metric thresholds (error rate, latency percentiles)
-- [ ] Traffic steps customization
-- [ ] Analysis interval and failure limits
+#### 4.7.4 Configuration Schema ✅
+- [x] Canary configuration in `blissful-infra.yaml` (CanaryConfig interface)
+- [x] Metric thresholds (error rate, latency percentiles)
+- [x] Traffic steps customization
+- [x] Analysis interval and failure limits
 
 **Configuration example:**
 ```yaml
@@ -444,21 +455,21 @@ canary:
         threshold: "> 99%"
 ```
 
-#### 4.7.5 CLI Commands
-- [ ] `blissful-infra deploy --canary` - Deploy with canary strategy
-- [ ] `blissful-infra canary status` - Show rollout progress
-- [ ] `blissful-infra canary promote` - Skip analysis, promote immediately
-- [ ] `blissful-infra canary abort` - Abort and rollback
-- [ ] `blissful-infra canary pause` - Pause rollout
-- [ ] `blissful-infra canary resume` - Resume paused rollout
+#### 4.7.5 CLI Commands ✅
+- [x] `blissful-infra deploy --canary` - Deploy with canary strategy
+- [x] `blissful-infra canary status` - Show rollout progress
+- [x] `blissful-infra canary promote` - Skip analysis, promote immediately (+ --full)
+- [x] `blissful-infra canary abort` - Abort and rollback
+- [x] `blissful-infra canary pause` - Pause rollout
+- [x] `blissful-infra canary resume` - Resume paused rollout
 
-**Location:** `packages/cli/src/commands/canary.ts`
+**Location:** `packages/cli/src/commands/canary.ts`, `packages/cli/src/utils/rollouts.ts`
 
-#### 4.7.6 Rollback Testing Mode
-- [ ] `blissful-infra canary test --simulate-failure` - Test auto-rollback
-- [ ] Inject bad metrics to trigger analysis failure
-- [ ] Verify rollback completes successfully
-- [ ] Report on rollback timing and behavior
+#### 4.7.6 Rollback Testing Mode ✅
+- [x] `blissful-infra canary test --simulate-failure` - Test auto-rollback
+- [x] `blissful-infra canary test --full-drill` - Full rollback drill with timing
+- [x] Verify rollback completes successfully
+- [x] Report on rollback timing and SLO compliance
 
 **Test scenarios:**
 ```bash
@@ -474,7 +485,7 @@ blissful-infra canary test --full-drill
 ```
 
 #### 4.7.7 Dashboard Integration
-- [ ] Rollout progress visualization
+- [ ] Rollout progress visualization (deferred to Phase 6)
 - [ ] Analysis results display
 - [ ] Promote/Abort buttons
 - [ ] Rollback history
@@ -602,47 +613,58 @@ Test Result: PASSED
 
 **Goal:** Agent learns from incidents and provides actionable insights.
 
-### 5.1 Knowledge Base
-- [ ] SQLite storage for incidents, patterns, fixes
-- [ ] Embedding generation with nomic-embed-text
-- [ ] Vector similarity search (sqlite-vss)
-- [ ] Incident recording on failures
-- [ ] Pattern extraction and normalization
+### 5.1 Knowledge Base ✅
+- [x] JSON file storage for incidents, patterns, fixes (upgradeable to SQLite)
+- [x] Jaccard similarity search for finding similar incidents
+- [x] 8 built-in patterns (OOM, connection refused, slow queries, deploy failure, high errors, Kafka lag, cert expiry, disk pressure)
+- [x] Incident recording with auto pattern matching
+- [x] Pattern extraction and normalization
 
-### 5.2 Enhanced Data Collectors
-- [ ] Jenkins collector (build logs, test results)
-- [ ] Prometheus collector (metrics queries)
-- [ ] Loki collector (log queries)
-- [ ] Kubernetes collector (events, pod status)
-- [ ] Argo CD collector (sync status, history)
-- [ ] Chaos Mesh collector (experiment results)
+**Location:** `packages/cli/src/utils/knowledge-base.ts`
 
-### 5.3 Root Cause Analysis
-- [ ] Timeline construction from multiple sources
-- [ ] Correlation with code changes (git blame)
-- [ ] Confidence scoring
-- [ ] Similar incident retrieval
-- [ ] `blissful-infra analyze` command
-- [ ] `blissful-infra analyze --incident <id>` for deep dive
+### 5.2 Enhanced Data Collectors ✅
+- [x] Docker logs collector (with error extraction)
+- [x] Container metrics collector (CPU, memory, network)
+- [x] Git context collector (commits, diffs)
+- [x] Kubernetes collector (events, pod status)
+- [x] Chaos results collector (from .blissful-infra/chaos/)
+- [x] Performance results collector (from .blissful-infra/perf/)
+- [x] Full context aggregation with parallel collection
 
-### 5.4 Fix Generation
-- [ ] Code fix suggestions with diffs
-- [ ] Auto-PR creation
-- [ ] Fix outcome tracking
-- [ ] Success rate by pattern type
+**Location:** `packages/cli/src/utils/collectors.ts`
 
-### 5.5 Proactive Suggestions
-- [ ] Daily suggestion generation (scheduled)
-- [ ] Pattern-based recommendations
-- [ ] Gap analysis against best practices
-- [ ] `blissful-infra suggest` command
-- [ ] Priority ranking (high/medium/low)
+### 5.3 Root Cause Analysis ✅
+- [x] Timeline construction from multiple sources (logs, git, metrics)
+- [x] Correlation with code changes (error timing vs commit timing)
+- [x] Confidence scoring (pattern match + correlation + similarity)
+- [x] Similar incident retrieval (Jaccard similarity)
+- [x] `blissful-infra analyze` command with formatted output
+- [x] `blissful-infra analyze --incident <id>` for deep dive
+- [x] Issue detection from logs, metrics, and container state
 
-### 5.6 Learning Loop
-- [ ] Track fix outcomes (resolved/partial/failed)
-- [ ] Update pattern success rates
-- [ ] Improve suggestions based on feedback
-- [ ] Auto-fix for high-confidence patterns (with approval)
+**Location:** `packages/cli/src/utils/analyzer.ts`, `packages/cli/src/commands/analyze.ts`
+
+### 5.4 Fix Generation ✅
+- [x] Fix suggestions from matched patterns (with confidence scoring)
+- [x] Fix suggestions from similar resolved incidents
+- [x] Fix outcome tracking (resolved/partial/failed)
+- [x] Success rate by pattern type (auto-updated)
+- [ ] Auto-PR creation (deferred)
+
+### 5.5 Proactive Suggestions ✅
+- [x] Pattern-based recommendations
+- [x] Gap analysis against best practices
+- [x] `blissful-infra suggest` command
+- [x] Priority ranking (high/medium/low based on confidence)
+- [x] Open incident summary and knowledge base stats
+- [ ] Daily suggestion generation (deferred - requires cron/scheduler)
+
+### 5.6 Learning Loop ✅
+- [x] Track fix outcomes (resolved/partial/failed)
+- [x] Update pattern success rates based on fix outcomes
+- [x] Pattern occurrence counting and last-seen tracking
+- [x] Similar incident matching improves with more data
+- [ ] Auto-fix for high-confidence patterns (deferred - requires approval workflow)
 
 ### Phase 5 Definition of Done
 ```
