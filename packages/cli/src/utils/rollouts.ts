@@ -1,5 +1,6 @@
 import { execa } from "execa";
 import chalk from "chalk";
+import { toExecError } from "./errors.js";
 
 /**
  * Argo Rollouts utilities for canary deployment management.
@@ -114,7 +115,7 @@ export async function getRolloutDetails(
     ], { stdio: "pipe", timeout: 10000 });
     return stdout;
   } catch (error) {
-    const err = error as { stderr?: string };
+    const err = toExecError(error);
     return err.stderr || "Failed to get rollout details";
   }
 }

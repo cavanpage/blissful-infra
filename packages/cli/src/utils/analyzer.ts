@@ -297,8 +297,8 @@ function matchPatternsToIssue(patterns: Pattern[], issue: DetectedIssue): Patter
 }
 
 function findCorrelations(
-  sources: Array<{ type: string; summary: string; data?: Record<string, unknown> }>,
-  context: { logs: Array<{ service: string; message: string }>; commits: Array<{ sha: string; message: string }> },
+  _sources: Array<{ type: string; summary: string; data?: Record<string, unknown> }>,
+  _context: { logs: Array<{ service: string; message: string }>; commits: Array<{ sha: string; message: string }> },
   timeline: TimelineEvent[]
 ): Correlation[] {
   const correlations: Correlation[] = [];
@@ -332,7 +332,7 @@ function findCorrelations(
 function generateFixSuggestions(
   matchedPatterns: PatternMatch[],
   similarIncidents: Array<{ incident: Incident; similarity: number }>,
-  issue: DetectedIssue
+  _issue: DetectedIssue
 ): SuggestedFix[] {
   const fixes: SuggestedFix[] = [];
 

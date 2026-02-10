@@ -1,8 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import fs from "node:fs/promises";
-import path from "node:path";
 import readline from "node:readline";
 import {
   checkOllamaRunning,
@@ -16,7 +14,7 @@ import {
   formatContextForPrompt,
   type CollectedContext,
 } from "../utils/collectors.js";
-import { loadConfig } from "../utils/config.js";
+import { findProjectDir } from "../utils/config.js";
 
 const SYSTEM_PROMPT = `You are a helpful infrastructure assistant for the blissful-infra project. You help developers understand their application logs, diagnose issues, and suggest improvements.
 
@@ -31,25 +29,6 @@ Keep responses concise and focused. Use markdown formatting for code blocks and 
 interface AgentOptions {
   query?: string;
   model?: string;
-}
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
 }
 
 async function runSingleQuery(

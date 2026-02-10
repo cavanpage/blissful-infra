@@ -64,6 +64,28 @@ export async function loadConfig(projectDir?: string): Promise<ProjectConfig | n
   }
 }
 
+/**
+ * Find a project directory by name, or use cwd if it contains blissful-infra.yaml.
+ */
+export async function findProjectDir(name?: string): Promise<string | null> {
+  if (name) {
+    const projectDir = path.join(process.cwd(), name);
+    try {
+      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
+      return projectDir;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
+    return process.cwd();
+  } catch {
+    return null;
+  }
+}
+
 function parseYaml(content: string): ProjectConfig {
   // Simple YAML parser for our config format
   const config: Record<string, string> = {};

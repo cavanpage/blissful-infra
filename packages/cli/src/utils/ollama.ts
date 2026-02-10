@@ -1,5 +1,3 @@
-import { execa } from "execa";
-
 export interface OllamaConfig {
   endpoint: string;
   models: {

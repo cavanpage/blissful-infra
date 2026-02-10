@@ -64,19 +64,6 @@ async function startJenkinsServer(): Promise<boolean> {
   }
 }
 
-async function stopJenkinsServer(): Promise<void> {
-  if (await isJenkinsRunning()) {
-    try {
-      await execa("docker", ["compose", "down"], {
-        cwd: JENKINS_DATA_DIR,
-        stdio: "pipe",
-      });
-    } catch {
-      // Ignore errors
-    }
-  }
-}
-
 async function openBrowser(url: string): Promise<void> {
   const platform = process.platform;
   try {

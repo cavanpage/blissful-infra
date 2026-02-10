@@ -4,7 +4,7 @@ import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir } from "../utils/config.js";
 
 interface CompareOptions {
   old: string;
@@ -47,25 +47,6 @@ interface MetricComparison {
   newValue: string;
   winner: "old" | "new" | "tie";
   improvement: string;
-}
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
 }
 
 async function getGitRef(projectDir: string, ref: string): Promise<string> {

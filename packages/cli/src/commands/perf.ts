@@ -4,7 +4,8 @@ import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
-import { loadConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir } from "../utils/config.js";
+import { toExecError } from "../utils/errors.js";
 
 interface PerfOptions {
   env?: string;
@@ -37,25 +38,6 @@ interface ThresholdResult {
   metric: string;
   value: string;
   threshold: string;
-}
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
 }
 
 async function checkK6Installed(): Promise<boolean> {
@@ -286,7 +268,7 @@ async function runPerfTest(
     console.log(chalk.gray(`\nResults saved to: ${path.relative(projectDir, resultsFile)}`));
   } catch (error) {
     spinner.stop();
-    const execaError = error as { stderr?: string; message?: string; exitCode?: number };
+    const execaError = toExecError(error);
 
     if (execaError.stderr?.includes("connection refused")) {
       console.log(chalk.red("\nError: Could not connect to the application."));
@@ -294,7 +276,7 @@ async function runPerfTest(
       console.log(chalk.gray("Start it with: blissful-infra up"));
     } else {
       console.log(chalk.red(`\nPerformance test failed:`));
-      console.log(chalk.gray(execaError.stderr || execaError.message || "Unknown error"));
+      console.log(chalk.gray(execaError.stderr || execaError.message));
     }
     process.exitCode = 1;
   }

@@ -3,7 +3,7 @@ import chalk from "chalk";
 import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { loadConfig } from "../utils/config.js";
+import { loadConfig, findProjectDir } from "../utils/config.js";
 import {
   chaosScenarios,
   getAvailableScenarios,
@@ -35,25 +35,6 @@ interface FMEAReport {
   score: number;
   maxScore: number;
   recommendations: string[];
-}
-
-async function findProjectDir(name?: string): Promise<string | null> {
-  if (name) {
-    const projectDir = path.join(process.cwd(), name);
-    try {
-      await fs.access(path.join(projectDir, "blissful-infra.yaml"));
-      return projectDir;
-    } catch {
-      return null;
-    }
-  }
-
-  try {
-    await fs.access(path.join(process.cwd(), "blissful-infra.yaml"));
-    return process.cwd();
-  } catch {
-    return null;
-  }
 }
 
 function calculateResilienceScore(results: ChaosResult[]): { score: number; maxScore: number } {

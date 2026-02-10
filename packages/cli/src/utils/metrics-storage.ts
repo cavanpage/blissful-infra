@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { existsSync, createWriteStream, createReadStream } from "node:fs";
+import { createReadStream } from "node:fs";
 import readline from "node:readline";
 
 /**

@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import { watch } from "chokidar";
 import { execa } from "execa";
 import { loadConfig, type ProjectConfig } from "../utils/config.js";
+import { toExecError } from "../utils/errors.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AppProcess = any;
@@ -94,7 +95,7 @@ function getIgnorePaths(): string[] {
   ];
 }
 
-async function rebuildDockerApp(config: ProjectConfig): Promise<void> {
+async function rebuildDockerApp(_config: ProjectConfig): Promise<void> {
   const spinner = ora("Rebuilding application in Docker...").start();
 
   try {
@@ -105,8 +106,9 @@ async function rebuildDockerApp(config: ProjectConfig): Promise<void> {
     spinner.succeed("Application rebuilt and restarted");
   } catch (error) {
     spinner.fail("Failed to rebuild application");
-    if (error instanceof Error && "stderr" in error) {
-      console.error(chalk.red((error as { stderr: string }).stderr));
+    const execError = toExecError(error);
+    if (execError.stderr) {
+      console.error(chalk.red(execError.stderr));
     }
   }
 }
@@ -263,8 +265,9 @@ async function buildProject(projectType: string): Promise<boolean> {
     return true;
   } catch (error) {
     spinner.fail("Build failed");
-    if (error instanceof Error && "stderr" in error) {
-      console.error(chalk.red((error as { stderr: string }).stderr));
+    const execError = toExecError(error);
+    if (execError.stderr) {
+      console.error(chalk.red(execError.stderr));
     }
     return false;
   }

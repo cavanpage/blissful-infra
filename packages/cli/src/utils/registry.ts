@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import ora from "ora";
 import { execa } from "execa";
-import type { ProjectConfig, RegistryConfig } from "./config.js";
+import type { ProjectConfig } from "./config.js";
 
 const LOCAL_REGISTRY_PORT = 5000;
 const LOCAL_REGISTRY_NAME = "blissful-registry";
