@@ -322,6 +322,163 @@ async function runLocalPipeline(
   }
 }
 
+async function isJenkinsRunning(): Promise<boolean> {
+  try {
+    const response = await fetch("http://localhost:8081/login", {
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok || response.status === 403;
+  } catch {
+    return false;
+  }
+}
+
+async function showJenkinsPipelineStatus(config: ProjectConfig): Promise<void> {
+  const spinner = ora("Fetching Jenkins pipeline status...").start();
+
+  if (!(await isJenkinsRunning())) {
+    spinner.fail("Jenkins is not running");
+    console.log();
+    console.log(chalk.dim("Start Jenkins:"));
+    console.log(chalk.cyan("  blissful-infra jenkins start"));
+    console.log();
+    console.log(chalk.dim("Or run the pipeline locally:"));
+    console.log(chalk.cyan("  blissful-infra pipeline --local"));
+    return;
+  }
+
+  const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
+
+  // Try to find the job (folder path first, then root)
+  let jobBaseUrl = `http://localhost:8081/job/blissful-projects/job/${config.name}`;
+  let response = await fetch(`${jobBaseUrl}/api/json`, {
+    headers: { Authorization: authHeader },
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    jobBaseUrl = `http://localhost:8081/job/${config.name}`;
+    response = await fetch(`${jobBaseUrl}/api/json`, {
+      headers: { Authorization: authHeader },
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => null);
+  }
+
+  if (!response?.ok) {
+    spinner.warn("Project not found in Jenkins");
+    console.log();
+    console.log(chalk.dim("Register this project:"));
+    console.log(chalk.cyan(`  blissful-infra jenkins add-project ${config.name}`));
+    console.log();
+    console.log(chalk.dim("Or run the pipeline locally:"));
+    console.log(chalk.cyan("  blissful-infra pipeline --local"));
+    return;
+  }
+
+  const jobData = (await response.json()) as {
+    displayName: string;
+    color: string;
+    lastBuild?: { number: number; url: string };
+    lastSuccessfulBuild?: { number: number };
+    lastFailedBuild?: { number: number };
+  };
+
+  spinner.stop();
+
+  console.log();
+  console.log(chalk.bold(`Pipeline Status: ${config.name}`));
+  console.log();
+
+  // Show job status
+  const colorMap: Record<string, string> = {
+    blue: "stable",
+    red: "failing",
+    yellow: "unstable",
+    blue_anime: "building",
+    red_anime: "building",
+    notbuilt: "never built",
+    disabled: "disabled",
+  };
+  const statusText = colorMap[jobData.color] || jobData.color;
+  const statusColor =
+    jobData.color.startsWith("blue") ? chalk.green :
+    jobData.color.startsWith("red") ? chalk.red :
+    jobData.color.startsWith("yellow") ? chalk.yellow :
+    chalk.dim;
+  console.log(chalk.dim("  Status: ") + statusColor(statusText));
+
+  // Fetch last build details if available
+  if (jobData.lastBuild) {
+    try {
+      const buildResp = await fetch(`${jobBaseUrl}/lastBuild/api/json`, {
+        headers: { Authorization: authHeader },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (buildResp.ok) {
+        const build = (await buildResp.json()) as {
+          number: number;
+          result: string | null;
+          duration: number;
+          timestamp: number;
+          displayName?: string;
+        };
+
+        const resultText = build.result ?? "IN PROGRESS";
+        const resultColor =
+          build.result === "SUCCESS" ? chalk.green :
+          build.result === "FAILURE" ? chalk.red :
+          build.result === null ? chalk.blue :
+          chalk.yellow;
+
+        console.log(chalk.dim("  Build:  ") + `#${build.number}`);
+        console.log(chalk.dim("  Result: ") + resultColor(resultText));
+        console.log(chalk.dim("  Duration: ") + `${(build.duration / 1000).toFixed(1)}s`);
+        console.log(chalk.dim("  Time:   ") + new Date(build.timestamp).toLocaleString());
+
+        // Try to get pipeline stages via wfapi
+        try {
+          const stagesResp = await fetch(`${jobBaseUrl}/lastBuild/wfapi/describe`, {
+            headers: { Authorization: authHeader },
+            signal: AbortSignal.timeout(3000),
+          });
+
+          if (stagesResp.ok) {
+            const wf = (await stagesResp.json()) as {
+              stages?: Array<{ name: string; status: string; durationMillis: number }>;
+            };
+
+            if (wf.stages && wf.stages.length > 0) {
+              console.log();
+              console.log(chalk.bold("  Stages:"));
+              for (const stage of wf.stages) {
+                const icon =
+                  stage.status === "SUCCESS" ? chalk.green("✓") :
+                  stage.status === "FAILED" ? chalk.red("✗") :
+                  stage.status === "IN_PROGRESS" ? chalk.blue("◐") :
+                  chalk.dim("○");
+                const dur = stage.durationMillis > 0 ? chalk.dim(` (${(stage.durationMillis / 1000).toFixed(1)}s)`) : "";
+                console.log(`    ${icon} ${stage.name}${dur}`);
+              }
+            }
+          }
+        } catch {
+          // Pipeline stages API not available
+        }
+      }
+    } catch {
+      // Could not fetch build details
+    }
+  }
+
+  console.log();
+  console.log(chalk.dim("  Jenkins: ") + chalk.cyan(`http://localhost:8081/job/${config.name}`));
+  console.log();
+  console.log(chalk.dim("Commands:"));
+  console.log(chalk.cyan("  blissful-infra jenkins build " + config.name) + chalk.dim("  # Trigger a build"));
+  console.log(chalk.cyan("  blissful-infra pipeline --local") + chalk.dim("             # Run locally"));
+}
+
 export async function pipelineAction(
   name: string | undefined,
   opts: PipelineOptions
@@ -349,14 +506,7 @@ export async function pipelineAction(
   if (opts.local) {
     await runLocalPipeline(config, projectDir, opts);
   } else {
-    // TODO: Show Jenkins pipeline status
-    console.log(chalk.yellow("Jenkins pipeline status not yet implemented."));
-    console.log();
-    console.log(chalk.dim("To run pipeline locally:"));
-    console.log(chalk.cyan("  blissful-infra pipeline --local"));
-    console.log();
-    console.log(chalk.dim("To view Jenkins:"));
-    console.log(chalk.cyan("  open http://localhost:8080/job/" + config.name));
+    await showJenkinsPipelineStatus(config);
   }
 }
 
