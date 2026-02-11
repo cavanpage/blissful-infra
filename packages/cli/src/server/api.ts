@@ -1507,8 +1507,84 @@ async function getPipelineStatus(
     // No Jenkinsfile
   }
 
-  return {
-    lastRun: undefined, // Would need Jenkins API integration
-    jenkinsUrl: hasJenkinsfile ? `http://localhost:8080/job/${projectName}` : undefined,
-  };
+  const jenkinsUrl = hasJenkinsfile ? `http://localhost:8081/job/${projectName}` : undefined;
+
+  // Try to fetch last build from Jenkins API
+  let lastRun: PipelineStatus["lastRun"];
+  if (hasJenkinsfile) {
+    try {
+      const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
+
+      // Try folder path first, then root
+      let jobApiUrl = `http://localhost:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
+      let resp = await fetch(jobApiUrl, {
+        headers: { Authorization: authHeader },
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (!resp.ok) {
+        jobApiUrl = `http://localhost:8081/job/${projectName}/lastBuild/api/json`;
+        resp = await fetch(jobApiUrl, {
+          headers: { Authorization: authHeader },
+          signal: AbortSignal.timeout(3000),
+        });
+      }
+
+      if (resp.ok) {
+        const build = (await resp.json()) as {
+          result: string | null;
+          duration: number;
+          timestamp: number;
+          displayName?: string;
+        };
+
+        const status =
+          build.result === "SUCCESS" ? "success" as const :
+          build.result === "FAILURE" ? "failure" as const :
+          build.result === null ? "running" as const :
+          "unknown" as const;
+
+        // Fetch pipeline stages if available
+        const stages: Array<{ name: string; status: "success" | "failure" | "running" | "skipped" | "pending" }> = [];
+        try {
+          const stagesUrl = jobApiUrl.replace("/api/json", "/wfapi/describe");
+          const stagesResp = await fetch(stagesUrl, {
+            headers: { Authorization: authHeader },
+            signal: AbortSignal.timeout(3000),
+          });
+          if (stagesResp.ok) {
+            const wf = (await stagesResp.json()) as {
+              stages?: Array<{ name: string; status: string }>;
+            };
+            if (wf.stages) {
+              for (const s of wf.stages) {
+                stages.push({
+                  name: s.name,
+                  status:
+                    s.status === "SUCCESS" ? "success" :
+                    s.status === "FAILED" ? "failure" :
+                    s.status === "IN_PROGRESS" ? "running" :
+                    s.status === "NOT_EXECUTED" ? "skipped" :
+                    "pending",
+                });
+              }
+            }
+          }
+        } catch {
+          // Pipeline stages API not available — that's fine
+        }
+
+        lastRun = {
+          status,
+          duration: Math.round(build.duration / 1000),
+          timestamp: new Date(build.timestamp).toISOString(),
+          stages,
+        };
+      }
+    } catch {
+      // Jenkins not reachable — return without lastRun
+    }
+  }
+
+  return { lastRun, jenkinsUrl };
 }
