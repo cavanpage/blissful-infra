@@ -79,16 +79,17 @@ interface Templates {
   databases: string[]
 }
 
-interface OllamaModel {
+interface AIModel {
   name: string
-  size: number
-  modifiedAt: string
+  provider: 'claude' | 'ollama'
+  displayName?: string
 }
 
 interface ModelsResponse {
   available: boolean
-  models: OllamaModel[]
-  recommended?: string
+  provider: 'claude' | 'ollama' | null
+  models: AIModel[]
+  recommended?: { provider: string; model: string }
   error?: string
 }
 
@@ -405,6 +406,7 @@ function App() {
   const [creating, setCreating] = useState(false)
   const [models, setModels] = useState<ModelsResponse | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [aiProvider, setAiProvider] = useState<'claude' | 'ollama' | null>(null)
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const [activeAlerts, setActiveAlerts] = useState<TriggeredAlert[]>([])
@@ -476,9 +478,10 @@ function App() {
       if (res.ok) {
         const data: ModelsResponse = await res.json()
         setModels(data)
+        setAiProvider(data.provider)
         // Set default to recommended model if not already selected
         if (!selectedModel && data.recommended) {
-          setSelectedModel(data.recommended)
+          setSelectedModel(data.recommended.model)
         }
       }
     } catch (e) {
@@ -1124,7 +1127,7 @@ function App() {
       const res = await fetch(`/api/projects/${selectedProject.name}/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userMessage, model: selectedModel || undefined }),
+        body: JSON.stringify({ query: userMessage, model: selectedModel || undefined, provider: aiProvider || undefined }),
       })
 
       if (res.ok) {
@@ -1459,16 +1462,23 @@ function App() {
                 </div>
               ) : activeTab === 'chat' ? (
                 <div className="flex-1 flex flex-col">
-                  {/* Model Selector */}
+                  {/* Provider & Model Selector */}
                   <div className="border-b border-gray-800 px-4 py-3 flex items-center gap-3">
+                    {aiProvider && (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        aiProvider === 'claude' ? 'bg-purple-900 text-purple-300' : 'bg-blue-900 text-blue-300'
+                      }`}>
+                        {aiProvider === 'claude' ? 'Claude' : 'Ollama'}
+                      </span>
+                    )}
                     <label className="text-sm text-gray-400">Model:</label>
                     {!models?.available ? (
                       <span className="text-sm text-yellow-400">
-                        Ollama not running - start with `ollama serve`
+                        No AI provider available - set ANTHROPIC_API_KEY or start Ollama
                       </span>
                     ) : models.models.length === 0 ? (
                       <span className="text-sm text-yellow-400">
-                        No models - pull one with `ollama pull llama3.1:8b`
+                        No models available
                       </span>
                     ) : (
                       <select
@@ -1478,8 +1488,8 @@ function App() {
                       >
                         {models.models.map((model) => (
                           <option key={model.name} value={model.name}>
-                            {model.name}
-                            {model.name === models.recommended ? ' (recommended)' : ''}
+                            {model.displayName || model.name}
+                            {model.name === models.recommended?.model ? ' (recommended)' : ''}
                           </option>
                         ))}
                       </select>

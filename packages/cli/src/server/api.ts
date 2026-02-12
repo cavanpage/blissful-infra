@@ -9,13 +9,14 @@ import {
   collectContext,
   formatContextForPrompt,
 } from "../utils/collectors.js";
+import { type ChatMessage } from "../utils/ollama.js";
 import {
-  checkOllamaRunning,
-  selectModel,
-  listModels,
-  chat,
-  type ChatMessage,
-} from "../utils/ollama.js";
+  getProvider,
+  getModelInfo,
+  aiChat,
+  listAllModels,
+  type AIProvider,
+} from "../utils/ai-provider.js";
 import {
   saveMetrics,
   loadMetrics,
@@ -325,7 +326,7 @@ export function createApiServer(workingDir: string, port = 3002) {
         const projectName = agentMatch[1];
         const projectDir = path.join(workingDir, projectName);
         const body = await readBody(req);
-        const { query, model: requestedModel } = JSON.parse(body);
+        const { query, model: requestedModel, provider: requestedProvider } = JSON.parse(body);
 
         if (!query) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -333,7 +334,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           return;
         }
 
-        const response = await handleAgentQuery(projectDir, query, requestedModel);
+        const response = await handleAgentQuery(projectDir, query, requestedModel, requestedProvider);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ response }));
         return;
@@ -576,30 +577,22 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
-      // GET /api/models - List available Ollama models
+      // GET /api/models - List available AI models
       if (req.method === "GET" && url.pathname === "/api/models") {
-        const ollamaRunning = await checkOllamaRunning();
-        if (!ollamaRunning) {
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({
-            available: false,
-            models: [],
-            error: "Ollama is not running"
-          }));
-          return;
-        }
+        const provider = await getProvider();
+        const models = await listAllModels();
+        const modelInfo = await getModelInfo();
 
-        const models = await listModels();
-        const recommended = await selectModel();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
-          available: true,
+          available: provider !== null,
+          provider,
           models: models.map(m => ({
             name: m.name,
-            size: m.size,
-            modifiedAt: m.modifiedAt,
+            provider: m.provider,
+            displayName: m.displayName,
           })),
-          recommended,
+          recommended: modelInfo ? { provider: modelInfo.provider, model: modelInfo.model } : null,
         }));
         return;
       }
@@ -1306,18 +1299,19 @@ function parseMemoryValue(value: string): number {
 async function handleAgentQuery(
   projectDir: string,
   query: string,
-  requestedModel?: string
+  requestedModel?: string,
+  requestedProvider?: AIProvider
 ): Promise<string> {
-  // Check if Ollama is running
-  const ollamaRunning = await checkOllamaRunning();
-  if (!ollamaRunning) {
-    return "Error: Ollama is not running. Please start Ollama with `ollama serve` and try again.";
+  // Find available provider
+  const provider = await getProvider(requestedProvider);
+  if (!provider) {
+    return "Error: No AI provider available. Set ANTHROPIC_API_KEY for Claude or start Ollama with `ollama serve`.";
   }
 
-  // Use requested model or auto-select
-  const model = requestedModel || (await selectModel());
-  if (!model) {
-    return "Error: No language models available in Ollama. Please pull a model with `ollama pull llama3.1:8b`.";
+  // Select model
+  const modelInfo = await getModelInfo(requestedModel, provider);
+  if (!modelInfo) {
+    return "Error: No language models available.";
   }
 
   // Collect context
@@ -1334,7 +1328,7 @@ async function handleAgentQuery(
   ];
 
   // Get response
-  const response = await chat(model, messages);
+  const response = await aiChat(modelInfo.provider, modelInfo.model, messages);
   return response;
 }
 
