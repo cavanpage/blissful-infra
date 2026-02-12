@@ -2,13 +2,14 @@ import { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import readline from "node:readline";
+import type { ChatMessage } from "../utils/ollama.js";
 import {
-  checkOllamaRunning,
-  selectModel,
-  chat,
-  chatStream,
-  type ChatMessage,
-} from "../utils/ollama.js";
+  getProvider,
+  getModelInfo,
+  aiChat,
+  aiChatStream,
+  type AIProvider,
+} from "../utils/ai-provider.js";
 import {
   collectContext,
   formatContextForPrompt,
@@ -29,10 +30,12 @@ Keep responses concise and focused. Use markdown formatting for code blocks and 
 interface AgentOptions {
   query?: string;
   model?: string;
+  provider?: string;
 }
 
 async function runSingleQuery(
   query: string,
+  provider: AIProvider,
   model: string,
   context: CollectedContext
 ): Promise<void> {
@@ -48,7 +51,7 @@ async function runSingleQuery(
       },
     ];
 
-    const response = await chat(model, messages);
+    const response = await aiChat(provider, model, messages);
     spinner.stop();
 
     console.log();
@@ -63,13 +66,15 @@ async function runSingleQuery(
 }
 
 async function runInteractiveMode(
+  provider: AIProvider,
   model: string,
   context: CollectedContext,
   projectDir: string
 ): Promise<void> {
   console.log();
   console.log(chalk.bold("Blissful Infra Agent"));
-  console.log(chalk.dim(`Model: ${model}`));
+  console.log(chalk.dim("Provider: ") + chalk.cyan(provider === "claude" ? "Claude" : "Ollama"));
+  console.log(chalk.dim("Model: ") + chalk.cyan(model));
   console.log(chalk.dim(`Context: ${context.logs.length} log entries, ${context.commits.length} commits`));
   console.log(chalk.dim('Type "help" for commands, "exit" to quit'));
   console.log();
@@ -198,7 +203,7 @@ async function runInteractiveMode(
 
       try {
         let response = "";
-        for await (const chunk of chatStream(model, history)) {
+        for await (const chunk of aiChatStream(provider, model, history)) {
           process.stdout.write(chunk);
           response += chunk;
         }
@@ -222,23 +227,31 @@ async function runInteractiveMode(
 }
 
 export async function agentAction(name?: string, opts: AgentOptions = {}): Promise<void> {
-  // Check Ollama is running
-  const ollamaRunning = await checkOllamaRunning();
-  if (!ollamaRunning) {
-    console.error(chalk.red("Ollama is not running."));
-    console.error(chalk.dim("Please start Ollama and try again:"));
-    console.error(chalk.cyan("  ollama serve"));
+  // Find the best available AI provider
+  const preferredProvider = opts.provider as AIProvider | undefined;
+  const providerType = await getProvider(preferredProvider);
+
+  if (!providerType) {
+    if (preferredProvider) {
+      console.error(chalk.red(`${preferredProvider === "claude" ? "Claude" : "Ollama"} is not available.`));
+    } else {
+      console.error(chalk.red("No AI provider available."));
+    }
     console.error();
-    console.error(chalk.dim("Install Ollama from: https://ollama.ai"));
+    console.error(chalk.dim("Options:"));
+    console.error(chalk.cyan("  1. Set ANTHROPIC_API_KEY") + chalk.dim(" for Claude"));
+    console.error(chalk.cyan("  2. Run 'ollama serve'") + chalk.dim("    for Ollama (local)"));
     process.exit(1);
   }
 
   // Select model
-  const model = opts.model || (await selectModel());
-  if (!model) {
-    console.error(chalk.red("No language models available in Ollama."));
-    console.error(chalk.dim("Pull a model first:"));
-    console.error(chalk.cyan("  ollama pull llama3.1:8b"));
+  const modelInfo = await getModelInfo(opts.model, providerType);
+  if (!modelInfo) {
+    console.error(chalk.red("No language models available."));
+    if (providerType === "ollama") {
+      console.error(chalk.dim("Pull a model first:"));
+      console.error(chalk.cyan("  ollama pull llama3.1:8b"));
+    }
     process.exit(1);
   }
 
@@ -262,9 +275,9 @@ export async function agentAction(name?: string, opts: AgentOptions = {}): Promi
 
   // Run in query mode or interactive mode
   if (opts.query) {
-    await runSingleQuery(opts.query, model, context);
+    await runSingleQuery(opts.query, modelInfo.provider, modelInfo.model, context);
   } else {
-    await runInteractiveMode(model, context, projectDir);
+    await runInteractiveMode(modelInfo.provider, modelInfo.model, context, projectDir);
   }
 }
 
@@ -273,6 +286,7 @@ export const agentCommand = new Command("agent")
   .argument("[name]", "Project name (if running from parent directory)")
   .option("-q, --query <query>", "Single query mode (non-interactive)")
   .option("-m, --model <model>", "Override model selection")
+  .option("-p, --provider <provider>", "AI provider: claude or ollama")
   .action(async (name: string | undefined, opts: AgentOptions) => {
     await agentAction(name, opts);
   });
