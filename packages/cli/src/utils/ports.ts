@@ -72,6 +72,11 @@ export function getRequiredPorts(config: {
     ports.push({ port: 9094, service: "Kafka (internal)" });
   }
 
+  // Nginx port
+  if (!isFrontendOnly) {
+    ports.push({ port: 80, service: "Nginx" });
+  }
+
   // Database ports
   if (config.database === "postgres" || config.database === "postgres-redis") {
     ports.push({ port: 5432, service: "PostgreSQL" });

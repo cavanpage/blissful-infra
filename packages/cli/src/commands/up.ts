@@ -71,6 +71,7 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
 
     if (!isFrontendOnly) {
       console.log(chalk.dim("  • Kafka:       ") + chalk.cyan("localhost:9092"));
+      console.log(chalk.dim("  • Nginx:       ") + chalk.cyan("http://localhost"));
     }
 
     console.log();
@@ -201,6 +202,21 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
   }
 
+  // Nginx reverse proxy (for projects with a backend)
+  if (!isFrontendOnly) {
+    const dependsOn = isFullstack ? ["app", "frontend"] : ["app"];
+    services.nginx = {
+      image: "nginx:alpine",
+      container_name: `${config.name}-nginx`,
+      ports: ["80:80"],
+      volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"],
+      depends_on: dependsOn,
+    };
+
+    // Generate nginx.conf
+    await generateNginxConf(config, projectDir, isFullstack);
+  }
+
   // Build volumes object
   const volumes: Record<string, string | null> = {};
   if (config.database === "postgres" || config.database === "postgres-redis") {
@@ -215,6 +231,73 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
   // Write docker-compose.yaml
   const yaml = generateYaml(compose);
   await fs.writeFile(path.join(projectDir, "docker-compose.yaml"), yaml);
+}
+
+async function generateNginxConf(
+  config: ProjectConfig,
+  projectDir: string,
+  isFullstack: boolean
+): Promise<void> {
+  const backendPaths = [
+    "/hello", "/health", "/ready", "/live", "/startup",
+    "/echo", "/greetings", "/ws/", "/actuator",
+  ];
+
+  const locationBlocks = backendPaths
+    .map((p) => `    location ${p} {\n        proxy_pass http://app:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
+    .join("\n\n");
+
+  const wsBlock = `    location /ws/ {
+        proxy_pass http://app:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }`;
+
+  let defaultLocation: string;
+  if (isFullstack) {
+    defaultLocation = `    location / {
+        proxy_pass http://frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }`;
+  } else {
+    defaultLocation = `    location / {
+        proxy_pass http://app:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }`;
+  }
+
+  // For fullstack: route backend paths to app, everything else to frontend
+  // For backend-only: route everything to app
+  let serverBlock: string;
+  if (isFullstack) {
+    serverBlock = `server {
+    listen 80;
+    server_name localhost;
+
+${locationBlocks}
+
+${wsBlock}
+
+${defaultLocation}
+}`;
+  } else {
+    serverBlock = `server {
+    listen 80;
+    server_name localhost;
+
+${wsBlock}
+
+${defaultLocation}
+}`;
+  }
+
+  await fs.writeFile(path.join(projectDir, "nginx.conf"), serverBlock + "\n");
 }
 
 function generateYaml(obj: unknown, indent = 0): string {

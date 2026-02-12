@@ -34,6 +34,14 @@ patches:
         path: /spec/template/spec/containers/0/resources/limits/cpu
         value: "1000m"
 
+  - target:
+      kind: Ingress
+      name: {{PROJECT_NAME}}
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: "{{PROJECT_NAME}}-staging.local"
+
 configMapGenerator:
   - name: {{PROJECT_NAME}}-config
     behavior: merge

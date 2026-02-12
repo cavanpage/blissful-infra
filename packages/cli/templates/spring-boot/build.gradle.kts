@@ -35,6 +35,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     runtimeOnly("org.postgresql:postgresql")
 {{/IF_POSTGRES}}
+{{#IF_REDIS}}
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+{{/IF_REDIS}}
 
     // Kotlin
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")

@@ -7,6 +7,10 @@ import com.blissful.websocket.EventWebSocketHandler
 import com.blissful.entity.Greeting
 import com.blissful.repository.GreetingRepository
 {{/IF_POSTGRES}}
+{{#IF_REDIS}}
+import org.springframework.cache.annotation.CacheEvict
+import org.springframework.cache.annotation.Cacheable
+{{/IF_REDIS}}
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -58,6 +62,9 @@ class HelloController(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
+{{#IF_REDIS}}
+    @CacheEvict(value = ["greetings"], allEntries = true)
+{{/IF_REDIS}}
     @GetMapping("/hello")
     fun hello(): HelloResponse {
         logger.info("Received hello request")
@@ -91,6 +98,9 @@ class HelloController(
 {{/IF_NO_POSTGRES}}
     }
 
+{{#IF_REDIS}}
+    @CacheEvict(value = ["greetings"], allEntries = true)
+{{/IF_REDIS}}
     @GetMapping("/hello/{name}")
     fun helloName(@PathVariable name: String): HelloResponse {
         logger.info("Received hello request for name: {}", name)
@@ -131,6 +141,9 @@ class HelloController(
     }
 
 {{#IF_POSTGRES}}
+{{#IF_REDIS}}
+    @Cacheable("greetings")
+{{/IF_REDIS}}
     @GetMapping("/greetings")
     fun getGreetings(): GreetingHistoryResponse {
         logger.info("Fetching recent greetings from database")
@@ -147,6 +160,9 @@ class HelloController(
         )
     }
 
+{{#IF_REDIS}}
+    @Cacheable(value = ["greetings"], key = "#name")
+{{/IF_REDIS}}
     @GetMapping("/greetings/{name}")
     fun getGreetingsByName(@PathVariable name: String): GreetingHistoryResponse {
         logger.info("Fetching greetings for name: {}", name)
