@@ -31,6 +31,18 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 {{/IF_POSTGRES}}
+{{#IF_REDIS}}
+
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000
+      cache-null-values: false
+{{/IF_REDIS}}
 
 management:
   endpoints:

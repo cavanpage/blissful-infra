@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Duration
 import java.time.Instant
+import org.springframework.data.redis.connection.RedisConnectionFactory
 import javax.sql.DataSource
 
 data class HealthResponse(
@@ -41,7 +42,8 @@ data class StartupInfo(
 @RestController
 class HealthController(
     @Autowired(required = false) private val dataSource: DataSource?,
-    @Autowired(required = false) private val kafkaAdmin: KafkaAdmin?
+    @Autowired(required = false) private val kafkaAdmin: KafkaAdmin?,
+    @Autowired(required = false) private val redisConnectionFactory: RedisConnectionFactory?
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
     private var startupTime: Instant? = null
@@ -66,6 +68,13 @@ class HealthController(
         // Add kafka status
         if (kafkaAdmin != null) {
             checks["kafka"] = checkKafka().let {
+                mapOf("status" to it.status, "message" to (it.message ?: ""))
+            }
+        }
+
+        // Add redis status
+        if (redisConnectionFactory != null) {
+            checks["redis"] = checkRedis().let {
                 mapOf("status" to it.status, "message" to (it.message ?: ""))
             }
         }
@@ -106,6 +115,11 @@ class HealthController(
             checks["kafka"] = checkKafka()
         }
 
+        // Check Redis connectivity
+        if (redisConnectionFactory != null) {
+            checks["redis"] = checkRedis()
+        }
+
         val allReady = checks.values.all { it.status == "UP" }
 
         val response = ReadyResponse(
@@ -142,6 +156,18 @@ class HealthController(
             CheckResult(status = "UP", message = "Database connection successful")
         } catch (e: Exception) {
             logger.warn("Database health check failed: {}", e.message)
+            CheckResult(status = "DOWN", message = e.message)
+        }
+    }
+
+    private fun checkRedis(): CheckResult {
+        return try {
+            redisConnectionFactory?.connection?.use { conn ->
+                conn.ping()
+            }
+            CheckResult(status = "UP", message = "Redis connection successful")
+        } catch (e: Exception) {
+            logger.warn("Redis health check failed: {}", e.message)
             CheckResult(status = "DOWN", message = e.message)
         }
     }

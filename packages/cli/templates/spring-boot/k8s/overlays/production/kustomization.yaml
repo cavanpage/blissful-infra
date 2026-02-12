@@ -38,6 +38,20 @@ patches:
             maxSurge: 1
             maxUnavailable: 0
 
+  - target:
+      kind: Ingress
+      name: {{PROJECT_NAME}}
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: "{{PROJECT_NAME}}.example.com"
+      - op: add
+        path: /spec/tls
+        value:
+          - hosts:
+              - "{{PROJECT_NAME}}.example.com"
+            secretName: "{{PROJECT_NAME}}-tls"
+
 configMapGenerator:
   - name: {{PROJECT_NAME}}-config
     behavior: merge
