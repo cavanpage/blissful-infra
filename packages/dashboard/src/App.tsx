@@ -301,9 +301,10 @@ function TimeSeriesChart({
 }) {
   const currentValue = data.length > 0 ? data[data.length - 1] : 0
 
-  // Calculate time domain - show full window, not just collected data
+  // Calculate time domain - include historical data if available
   const now = Date.now()
-  const windowStart = now - windowSeconds * 1000
+  const dataStart = timestamps.length > 0 ? timestamps[0] : now
+  const windowStart = Math.min(dataStart, now - windowSeconds * 1000)
   const timeDomain: [number, number] = [windowStart, now]
 
   // Convert to recharts format
@@ -1800,13 +1801,13 @@ function App() {
                 </div>
               ) : activeTab === 'pipeline' ? (
                 <div className="flex-1 overflow-auto p-6">
-                  {pipelineData?.lastRun ? (
+                  {(pipelineData?.lastRun || pipelineData?.jenkinsUrl) ? (
                     <div className="space-y-6">
                       {/* Stage Visualization */}
                       <div className="bg-gray-800 rounded-lg p-4">
                         <h3 className="text-sm font-semibold text-gray-300 mb-4">Pipeline Stages</h3>
                         <div className="flex items-center gap-2 overflow-x-auto">
-                          {(pipelineData.lastRun.stages.length > 0
+                          {(pipelineData.lastRun?.stages && pipelineData.lastRun.stages.length > 0
                             ? pipelineData.lastRun.stages
                             : [
                                 { name: 'Build', status: 'pending' as const },
@@ -1828,30 +1829,36 @@ function App() {
                       </div>
 
                       {/* Last Run Info */}
-                      <div className="bg-gray-800 rounded-lg p-4">
-                        <h3 className="text-sm font-semibold text-gray-300 mb-3">Last Run</h3>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <div className="text-xs text-gray-500">Status</div>
-                            <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
-                              pipelineData.lastRun.status === 'success' ? 'bg-green-900 text-green-300' :
-                              pipelineData.lastRun.status === 'failure' ? 'bg-red-900 text-red-300' :
-                              pipelineData.lastRun.status === 'running' ? 'bg-blue-900 text-blue-300' :
-                              'bg-gray-700 text-gray-400'
-                            }`}>
-                              {pipelineData.lastRun.status}
-                            </span>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Duration</div>
-                            <div className="text-sm mt-1">{pipelineData.lastRun.duration ? `${pipelineData.lastRun.duration}s` : '-'}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Timestamp</div>
-                            <div className="text-sm mt-1">{pipelineData.lastRun.timestamp ? new Date(pipelineData.lastRun.timestamp).toLocaleString() : '-'}</div>
+                      {pipelineData.lastRun ? (
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h3 className="text-sm font-semibold text-gray-300 mb-3">Last Run</h3>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <div className="text-xs text-gray-500">Status</div>
+                              <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
+                                pipelineData.lastRun.status === 'success' ? 'bg-green-900 text-green-300' :
+                                pipelineData.lastRun.status === 'failure' ? 'bg-red-900 text-red-300' :
+                                pipelineData.lastRun.status === 'running' ? 'bg-blue-900 text-blue-300' :
+                                'bg-gray-700 text-gray-400'
+                              }`}>
+                                {pipelineData.lastRun.status}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500">Duration</div>
+                              <div className="text-sm mt-1">{pipelineData.lastRun.duration ? `${pipelineData.lastRun.duration}s` : '-'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500">Timestamp</div>
+                              <div className="text-sm mt-1">{pipelineData.lastRun.timestamp ? new Date(pipelineData.lastRun.timestamp).toLocaleString() : '-'}</div>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="bg-gray-800 rounded-lg p-4 text-center text-gray-500 text-sm">
+                          No builds yet — run the pipeline to see results
+                        </div>
+                      )}
 
                       {/* Run Pipeline */}
                       <div className="bg-gray-800 rounded-lg p-4">
@@ -1879,7 +1886,7 @@ function App() {
                             {pipelineRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                             {pipelineRunning ? 'Running...' : 'Run Pipeline'}
                           </button>
-                          {pipelineData.jenkinsUrl && (
+                          {pipelineData?.jenkinsUrl && (
                             <a href={pipelineData.jenkinsUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-400 hover:underline flex items-center gap-1">
                               <ExternalLink className="w-3 h-3" /> Jenkins
                             </a>
@@ -1891,7 +1898,7 @@ function App() {
                     <div className="flex-1 flex items-center justify-center text-gray-500 min-h-[300px]">
                       <div className="text-center">
                         <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>No pipeline runs yet</p>
+                        <p>No Jenkinsfile found</p>
                         <button
                           onClick={runPipeline}
                           disabled={pipelineRunning}

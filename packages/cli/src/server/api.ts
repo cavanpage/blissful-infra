@@ -1113,7 +1113,13 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
           if (check.name === "backend" && config?.backend === "spring-boot") {
             try {
               const data = await response.json() as { status?: string };
-              details = data.status || "UP";
+              const backendStatus = data.status?.toLowerCase() || "up";
+              if (backendStatus === "degraded" || backendStatus === "down") {
+                status = "unhealthy";
+                details = backendStatus === "degraded" ? "Dependency check failing" : "Service down";
+              } else {
+                details = "UP";
+              }
             } catch {
               details = "UP";
             }
