@@ -135,6 +135,18 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     depends_on: ["app"],
   };
 
+  // Nginx reverse proxy
+  services.nginx = {
+    image: "nginx:alpine",
+    container_name: `${name}-nginx`,
+    ports: ["80:80"],
+    volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"],
+    depends_on: ["app", "frontend"],
+  };
+
+  // Generate nginx.conf
+  await generateNginxConf(projectDir);
+
   // Build volumes object
   const volumes: Record<string, null> = {};
   if (database === "postgres" || database === "postgres-redis") {
@@ -190,6 +202,44 @@ function generateYaml(obj: unknown, indent = 0): string {
   }
 
   return String(obj);
+}
+
+async function generateNginxConf(projectDir: string): Promise<void> {
+  const backendPaths = [
+    "/hello", "/health", "/ready", "/live", "/startup",
+    "/echo", "/greetings", "/ws/", "/actuator",
+  ];
+
+  const locationBlocks = backendPaths
+    .map((p) => `    location ${p} {\n        proxy_pass http://app:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
+    .join("\n\n");
+
+  const wsBlock = `    location /ws/ {
+        proxy_pass http://app:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }`;
+
+  const defaultLocation = `    location / {
+        proxy_pass http://frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }`;
+
+  const serverBlock = `server {
+    listen 80;
+    server_name localhost;
+
+${locationBlocks}
+
+${wsBlock}
+
+${defaultLocation}
+}`;
+
+  await fs.writeFile(path.join(projectDir, "nginx.conf"), serverBlock + "\n");
 }
 
 export const startCommand = new Command("start")
@@ -378,6 +428,7 @@ docker-compose.override.yaml
     console.log();
     console.log(chalk.dim("  Frontend:    ") + chalk.cyan("http://localhost:3000"));
     console.log(chalk.dim("  Backend API: ") + chalk.cyan("http://localhost:8080"));
+    console.log(chalk.dim("  Nginx:       ") + chalk.cyan("http://localhost"));
     console.log(chalk.dim("  Kafka:       ") + chalk.cyan("localhost:9092"));
     if (database === "postgres" || database === "postgres-redis") {
       console.log(chalk.dim("  PostgreSQL:  ") + chalk.cyan("localhost:5432"));

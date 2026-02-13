@@ -121,6 +121,12 @@ function replaceVariables(content: string, variables: TemplateVariables): string
     hasPostgres ? "" : "$1"
   );
 
+  // Handle no redis conditional: {{#IF_NO_REDIS}}...{{/IF_NO_REDIS}}
+  result = result.replace(
+    /\{\{#IF_NO_REDIS\}\}([\s\S]*?)\{\{\/IF_NO_REDIS\}\}/g,
+    hasRedis ? "" : "$1"
+  );
+
   // Phase 2: Kubernetes/Cloud conditionals
   // Handle {{#IF_KUBERNETES}}...{{/IF_KUBERNETES}} - true for kubernetes or cloud targets
   result = result.replace(
