@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Duration
 import java.time.Instant
+{{#IF_REDIS}}
 import org.springframework.data.redis.connection.RedisConnectionFactory
+{{/IF_REDIS}}
 import javax.sql.DataSource
 
 data class HealthResponse(
@@ -42,8 +44,13 @@ data class StartupInfo(
 @RestController
 class HealthController(
     @Autowired(required = false) private val dataSource: DataSource?,
+{{#IF_REDIS}}
     @Autowired(required = false) private val kafkaAdmin: KafkaAdmin?,
     @Autowired(required = false) private val redisConnectionFactory: RedisConnectionFactory?
+{{/IF_REDIS}}
+{{#IF_NO_REDIS}}
+    @Autowired(required = false) private val kafkaAdmin: KafkaAdmin?
+{{/IF_NO_REDIS}}
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
     private var startupTime: Instant? = null
@@ -72,12 +79,14 @@ class HealthController(
             }
         }
 
+{{#IF_REDIS}}
         // Add redis status
         if (redisConnectionFactory != null) {
             checks["redis"] = checkRedis().let {
                 mapOf("status" to it.status, "message" to (it.message ?: ""))
             }
         }
+{{/IF_REDIS}}
 
         // Add startup info
         startupTime?.let { start ->
@@ -89,13 +98,13 @@ class HealthController(
 
         val allHealthy = checks.values.all { check ->
             when (check) {
-                is Map<*, *> -> check["status"] == "UP"
+                is Map<*, *> -> !check.containsKey("status") || check["status"] == "UP"
                 else -> true
             }
         }
 
         return HealthResponse(
-            status = if (allHealthy) "healthy" else "degraded",
+            status = if (allHealthy) "healthy" else "unhealthy",
             timestamp = Instant.now().toString(),
             details = checks
         )
@@ -115,10 +124,12 @@ class HealthController(
             checks["kafka"] = checkKafka()
         }
 
+{{#IF_REDIS}}
         // Check Redis connectivity
         if (redisConnectionFactory != null) {
             checks["redis"] = checkRedis()
         }
+{{/IF_REDIS}}
 
         val allReady = checks.values.all { it.status == "UP" }
 
@@ -160,6 +171,7 @@ class HealthController(
         }
     }
 
+{{#IF_REDIS}}
     private fun checkRedis(): CheckResult {
         return try {
             redisConnectionFactory?.connection?.use { conn ->
@@ -171,6 +183,7 @@ class HealthController(
             CheckResult(status = "DOWN", message = e.message)
         }
     }
+{{/IF_REDIS}}
 
     private fun checkKafka(): CheckResult {
         return try {

@@ -1498,13 +1498,16 @@ async function getPipelineStatus(
   projectDir: string,
   projectName: string
 ): Promise<PipelineStatus> {
-  // Check if Jenkinsfile exists
+  // Check if Jenkinsfile exists (root or backend/ for fullstack projects)
   let hasJenkinsfile = false;
-  try {
-    await fs.access(path.join(projectDir, "Jenkinsfile"));
-    hasJenkinsfile = true;
-  } catch {
-    // No Jenkinsfile
+  for (const loc of ["Jenkinsfile", "backend/Jenkinsfile"]) {
+    try {
+      await fs.access(path.join(projectDir, loc));
+      hasJenkinsfile = true;
+      break;
+    } catch {
+      // Try next location
+    }
   }
 
   const jenkinsUrl = hasJenkinsfile ? `http://localhost:8081/job/${projectName}` : undefined;
