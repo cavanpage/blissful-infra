@@ -78,10 +78,11 @@ export function getRequiredPorts(config: ProjectConfig): { port: number; service
   // Dashboard port
   ports.push({ port: 3002, service: "Dashboard" });
 
-  // AI Pipeline port
-  if (config.plugins?.map(x => x.type).includes("ai-pipeline")) {
-    ports.push({ port: 8090, service: "AI Pipeline" });
-  }
+  // AI Pipeline ports (one per instance)
+  const aiPipelines = config.plugins?.filter(p => p.type === "ai-pipeline") || [];
+  aiPipelines.forEach((p, i) => {
+    ports.push({ port: 8090 + i, service: `AI Pipeline (${p.instance})` });
+  });
 
   // Database ports
   if (config.database === "postgres" || config.database === "postgres-redis") {

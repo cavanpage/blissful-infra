@@ -12,6 +12,9 @@ export interface TemplateVariables {
   registryUrl?: string;
   namespace?: string;
   environment?: string;
+  // Plugin instance variables
+  instanceName?: string;
+  apiPort?: number;
 }
 
 export async function copyTemplate(
@@ -157,6 +160,11 @@ function replaceVariables(content: string, variables: TemplateVariables): string
     .replace(/\{\{REGISTRY_URL\}\}/g, variables.registryUrl || "localhost:5000")
     .replace(/\{\{NAMESPACE\}\}/g, variables.namespace || variables.projectName)
     .replace(/\{\{ENVIRONMENT\}\}/g, variables.environment || "local");
+
+  // Plugin instance variables
+  result = result
+    .replace(/\{\{INSTANCE_NAME\}\}/g, variables.instanceName || variables.projectName)
+    .replace(/\{\{API_PORT\}\}/g, String(variables.apiPort || 8090));
 
   return result;
 }

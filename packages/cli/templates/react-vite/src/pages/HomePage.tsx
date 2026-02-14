@@ -41,7 +41,7 @@ export default function HomePage() {
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-bold mb-4">Welcome to {{PROJECT_NAME}}</h1>
+        <h1 className="text-3xl font-bold mb-4">Welcome to {"{{PROJECT_NAME}}"}</h1>
         <p className="text-muted-foreground">
           Your full-stack application is ready to go.
         </p>

@@ -101,9 +101,13 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim("  • Nginx:       ") + chalk.cyan("http://localhost"));
     }
 
-    if (config.plugins?.map(x => x.type).includes("ai-pipeline")) {
-      console.log(chalk.dim("  • AI Pipeline: ") + chalk.cyan("http://localhost:8090"));
-    }
+    const aiPipelinesOut = config.plugins?.filter(p => p.type === "ai-pipeline") || [];
+    aiPipelinesOut.forEach((plugin, index) => {
+      const cfg = config.pluginConfigs?.[plugin.instance];
+      const port = cfg?.port ?? (8090 + index);
+      const label = aiPipelinesOut.length > 1 ? `AI Pipeline (${plugin.instance})` : "AI Pipeline";
+      console.log(chalk.dim(`  • ${label}: `) + chalk.cyan(`http://localhost:${port}`));
+    });
 
     console.log(chalk.dim("  • Dashboard:   ") + chalk.cyan("http://localhost:3002"));
 
@@ -250,26 +254,33 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     await generateNginxConf(config, projectDir, isFullstack);
   }
 
-  // AI Pipeline plugin
-  if (config.plugins?.map(x => x.type).includes("ai-pipeline")) {
-    services["ai-pipeline"] = {
+  // AI Pipeline plugins
+  const aiPipelines = config.plugins?.filter(p => p.type === "ai-pipeline") || [];
+  aiPipelines.forEach((plugin, index) => {
+    const cfg = config.pluginConfigs?.[plugin.instance];
+    const port = cfg?.port ?? (8090 + index);
+    services[plugin.instance] = {
       build: {
-        context: isFullstack ? "./ai-pipeline" : "./ai-pipeline",
+        context: `./${plugin.instance}`,
         dockerfile: "Dockerfile",
       },
-      container_name: `${config.name}-ai-pipeline`,
-      ports: ["8090:8090"],
+      container_name: `${config.name}-${plugin.instance}`,
+      ports: [`${port}:${port}`],
       environment: {
         PROJECT_NAME: config.name,
+        INSTANCE_NAME: plugin.instance,
         KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
-        PIPELINE_MODE: "streaming",
+        PIPELINE_MODE: cfg?.mode ?? "streaming",
         SPARK_MASTER: "local[*]",
+        API_PORT: String(port),
+        EVENTS_TOPIC: cfg?.events_topic ?? "events",
+        PREDICTIONS_TOPIC: cfg?.predictions_topic ?? (aiPipelines.length > 1 ? `predictions-${plugin.instance}` : "predictions"),
       },
       depends_on: {
         kafka: { condition: "service_healthy" },
       },
     };
-  }
+  });
 
   // Dashboard service
   services.dashboard = {
