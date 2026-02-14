@@ -39,6 +39,7 @@ interface StartOptions {
   frontend?: string;
   database?: string;
   link?: boolean;
+  plugins?: string;
 }
 
 const DEFAULTS = {
@@ -56,7 +57,7 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function generateDockerCompose(projectDir: string, name: string, database: string): Promise<void> {
+async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: string[] = []): Promise<void> {
   const services: Record<string, unknown> = {};
 
   // Kafka service
@@ -172,6 +173,27 @@ async function generateDockerCompose(projectDir: string, name: string, database:
 
   // Generate nginx.conf
   await generateNginxConf(projectDir);
+
+  // AI Pipeline plugin
+  if (plugins.includes("ai-pipeline")) {
+    services["ai-pipeline"] = {
+      build: {
+        context: "./ai-pipeline",
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${name}-ai-pipeline`,
+      ports: ["8090:8090"],
+      environment: {
+        PROJECT_NAME: name,
+        KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
+        PIPELINE_MODE: "streaming",
+        SPARK_MASTER: "local[*]",
+      },
+      depends_on: {
+        kafka: { condition: "service_healthy" },
+      },
+    };
+  }
 
   // Dashboard service
   services.dashboard = {
@@ -292,6 +314,7 @@ export const startCommand = new Command("start")
   .option("-f, --frontend <frontend>", `Frontend framework (default: ${DEFAULTS.frontend})`)
   .option("-d, --database <database>", `Database (none, postgres, redis, postgres-redis)`)
   .option("-l, --link", "Link to templates instead of copying (for template development)")
+  .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")
   .action(async (name: string, opts: StartOptions) => {
     console.log();
     console.log(chalk.bold("⚡ blissful-infra start"), chalk.dim("- Create and run fullstack app"));
@@ -314,9 +337,10 @@ export const startCommand = new Command("start")
     const frontend = opts.frontend || DEFAULTS.frontend;
     const database = opts.database || DEFAULTS.database;
     const linkMode = opts.link || false;
+    const plugins = opts.plugins ? opts.plugins.split(",").map(p => p.trim()) : [];
 
     // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ type: "fullstack", database });
+    const requiredPorts = getRequiredPorts({ type: "fullstack", database, plugins: plugins.join(",") });
     const portResults = await checkPorts(requiredPorts);
     const conflicts = portResults.filter((p) => p.inUse);
 
@@ -399,17 +423,36 @@ export const startCommand = new Command("start")
       }
     }
 
+    // Copy plugin templates
+    for (const plugin of plugins) {
+      if (availableTemplates.includes(plugin)) {
+        scaffoldSpinner.text = `Copying ${plugin} plugin...`;
+        const pluginDir = path.join(projectDir, plugin);
+        await fs.mkdir(pluginDir, { recursive: true });
+        await copyTemplate(plugin, pluginDir, {
+          projectName: name,
+          database,
+          deployTarget: "local-only",
+        });
+      }
+    }
+
     // Create config
+    const configLines = [
+      "# Blissful Infra Configuration",
+      `name: ${name}`,
+      "type: fullstack",
+      `backend: ${backend}`,
+      `frontend: ${frontend}`,
+      `database: ${database}`,
+      "deploy_target: local-only",
+    ];
+    if (plugins.length > 0) {
+      configLines.push(`plugins: ${plugins.join(",")}`);
+    }
     await fs.writeFile(
       path.join(projectDir, "blissful-infra.yaml"),
-      `# Blissful Infra Configuration
-name: ${name}
-type: fullstack
-backend: ${backend}
-frontend: ${frontend}
-database: ${database}
-deploy_target: local-only
-`
+      configLines.join("\n") + "\n"
     );
 
     // Create .gitignore
@@ -437,7 +480,7 @@ docker-compose.override.yaml
 
     // Step 2: Generate docker-compose
     const composeSpinner = ora("Generating docker-compose.yaml...").start();
-    await generateDockerCompose(projectDir, name, database);
+    await generateDockerCompose(projectDir, name, database, plugins);
     composeSpinner.succeed("Generated docker-compose.yaml");
 
     // Step 3: Build dashboard image and start containers
@@ -479,6 +522,9 @@ docker-compose.override.yaml
     }
     if (database === "redis" || database === "postgres-redis") {
       console.log(chalk.dim("  Redis:       ") + chalk.cyan("localhost:6379"));
+    }
+    if (plugins.includes("ai-pipeline")) {
+      console.log(chalk.dim("  AI Pipeline: ") + chalk.cyan("http://localhost:8090"));
     }
     console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));
     console.log();

@@ -1147,6 +1147,12 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
     healthChecks.push({ name: "kafka", url: "", port: 9092 });
   }
 
+  // AI Pipeline health check
+  if (config?.plugins?.includes("ai-pipeline")) {
+    const aiUrl = DOCKER_MODE ? "http://ai-pipeline:8090" : "http://localhost:8090";
+    healthChecks.push({ name: "ai-pipeline", url: `${aiUrl}/health`, port: 8090 });
+  }
+
   // Check each service
   for (const check of healthChecks) {
     const startTime = Date.now();

@@ -13,6 +13,7 @@ interface ProjectOptions {
   frontend?: string;
   database: string;
   deployTarget: string;
+  plugins: string[];
 }
 
 const BACKEND_TEMPLATES = [
@@ -68,6 +69,7 @@ interface CommandOptions {
   frontend?: string;
   database?: string;
   deploy?: string;
+  plugins?: string;
 }
 
 async function promptForOptions(
@@ -181,6 +183,7 @@ async function promptForOptions(
     frontend: opts?.frontend || answers.frontend,
     database: projectType === "frontend" ? "none" : (opts?.database || answers.database),
     deployTarget: opts?.deploy || answers.deployTarget,
+    plugins: opts?.plugins ? opts.plugins.split(",").map(p => p.trim()) : [],
   };
 }
 
@@ -254,6 +257,20 @@ async function scaffoldProject(options: ProjectOptions): Promise<void> {
     }
   }
 
+  // Copy plugin templates
+  for (const plugin of options.plugins) {
+    const pluginDir = path.join(projectDir, plugin);
+    if (availableTemplates.includes(plugin)) {
+      spinner.text = `Copying ${plugin} plugin...`;
+      await fs.mkdir(pluginDir, { recursive: true });
+      await copyTemplate(plugin, pluginDir, {
+        projectName: options.name,
+        database: options.database,
+        deployTarget: options.deployTarget,
+      });
+    }
+  }
+
   // Create blissful-infra.yaml config
   const configLines = [
     "# Blissful Infra Configuration",
@@ -271,6 +288,13 @@ async function scaffoldProject(options: ProjectOptions): Promise<void> {
   configLines.push(
     `database: ${options.database}`,
     `deploy_target: ${options.deployTarget}`,
+  );
+
+  if (options.plugins.length > 0) {
+    configLines.push(`plugins: ${options.plugins.join(",")}`);
+  }
+
+  configLines.push(
     "",
     "# Agent configuration (Phase 1.4)",
     "# agent:",
@@ -453,6 +477,7 @@ export const createCommand = new Command("create")
   .option("-f, --frontend <frontend>", "Frontend template (react-vite, nextjs, none)")
   .option("-d, --database <database>", "Database to include (none, postgres, redis, postgres-redis)")
   .option("--deploy <target>", "Deployment target (local-only, kubernetes, cloud)")
+  .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")
   .action(async (name?: string, opts?: CommandOptions) => {
     console.log();
     console.log(

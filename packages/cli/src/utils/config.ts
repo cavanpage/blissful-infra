@@ -51,6 +51,8 @@ export interface ProjectConfig {
   pipeline?: PipelineConfig;
   // Phase 4 additions
   canary?: CanaryConfig;
+  // Plugins
+  plugins?: string;
 }
 
 export async function loadConfig(projectDir?: string): Promise<ProjectConfig | null> {
@@ -110,5 +112,6 @@ function parseYaml(content: string): ProjectConfig {
     frontend: config.frontend,
     database: config.database || "none",
     deployTarget: config.deploy_target || "local-only",
+    plugins: config.plugins,
   };
 }
