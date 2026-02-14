@@ -15,6 +15,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
 | **Phase 5** | Intelligence | Full agent + knowledge base | 🔧 In Progress |
 | **Phase 6** | Scale | More templates + cloud deploy + enterprise components | ⏳ Planned |
+| **Phase 7** | Autonomy | LangGraph virtual employees that build features for your apps | ⏳ Planned |
 
 ---
 
@@ -807,6 +808,97 @@ Created PR #142: fix/bounded-greeting-cache
 
 ---
 
+## Phase 7: Autonomy
+
+**Goal:** LangGraph-powered virtual employees that autonomously build features, fix bugs, and maintain your blissful-infra apps.
+
+### 7.1 LangGraph Agent Framework
+- [ ] LangGraph integration with tool-calling agents
+- [ ] Agent runtime as a blissful-infra service (Python, runs alongside project)
+- [ ] Configurable LLM backend (Claude, GPT-4, Ollama local models)
+- [ ] Agent memory and conversation persistence (checkpointing)
+- [ ] `blissful-infra agent hire <role>` command to spawn a virtual employee
+
+### 7.2 Virtual Employee Roles
+- [ ] **Feature Engineer** — Takes a task description, writes code, creates tests, opens PR
+- [ ] **Bug Fixer** — Monitors logs/alerts, triages issues, implements fixes
+- [ ] **Reviewer** — Reviews PRs, suggests improvements, checks for regressions
+- [ ] **SRE Bot** — Watches metrics, responds to alerts, runs chaos tests, tunes configs
+- [ ] **Docs Writer** — Generates/updates API docs, README, architecture diagrams
+
+### 7.3 Tool Graph (LangGraph Nodes)
+- [ ] **Code tools** — Read/write files, search codebase, AST analysis
+- [ ] **Git tools** — Branch, commit, push, create PR, read diffs
+- [ ] **Test tools** — Run unit/integration tests, interpret results
+- [ ] **Build tools** — Trigger builds, read build logs, fix compilation errors
+- [ ] **Infra tools** — Docker compose, health checks, log queries, metrics queries
+- [ ] **Knowledge tools** — Query knowledge base, search similar incidents
+
+### 7.4 Task Workflow Engine
+- [ ] Task queue with priority and assignment to virtual employees
+- [ ] Multi-step execution plans with human-in-the-loop checkpoints
+- [ ] Automatic retry with different strategies on failure
+- [ ] Task handoff between agents (e.g., Feature Engineer → Reviewer)
+- [ ] Progress streaming to dashboard
+
+### 7.5 Safety and Approval Gates
+- [ ] Human approval required before merging PRs
+- [ ] Dry-run mode for all destructive operations
+- [ ] Diff preview before any file write
+- [ ] Budget/token limits per agent per task
+- [ ] Audit log of all agent actions
+
+### 7.6 Dashboard Integration
+- [ ] Virtual employee status panel (active agents, current tasks)
+- [ ] Task board (backlog, in progress, review, done)
+- [ ] Agent conversation viewer (see agent reasoning)
+- [ ] One-click approve/reject for agent PRs
+- [ ] Cost tracking (tokens used per task)
+
+### 7.7 CLI Commands
+- [ ] `blissful-infra agent hire <role>` — Spawn a virtual employee
+- [ ] `blissful-infra agent fire <name>` — Stop a virtual employee
+- [ ] `blissful-infra agent list` — Show active virtual employees
+- [ ] `blissful-infra agent assign <name> <task>` — Assign a task
+- [ ] `blissful-infra agent status <name>` — Show agent progress
+- [ ] `blissful-infra agent logs <name>` — View agent decision log
+
+**Location:** `packages/cli/src/agents/`, `packages/cli/src/commands/agent-hire.ts`
+
+### Phase 7 Definition of Done
+```
+$ blissful-infra agent hire feature-engineer --name alice
+✓ Virtual employee "alice" (Feature Engineer) is online
+
+$ blissful-infra agent assign alice "Add a /users endpoint with CRUD operations"
+✓ Task assigned to alice
+
+# Alice works autonomously:
+#   1. Reads existing code structure
+#   2. Creates UserController.kt, UserService.kt, UserRepository.kt
+#   3. Writes unit tests
+#   4. Runs tests locally (all pass)
+#   5. Creates branch feat/add-users-endpoint
+#   6. Opens PR with description
+
+$ blissful-infra agent status alice
+Agent: alice (Feature Engineer)
+Status: Awaiting Review
+Current Task: Add /users endpoint with CRUD operations
+
+Progress:
+  ✓ Analyzed codebase (12 files read)
+  ✓ Created implementation plan (4 files)
+  ✓ Wrote code (UserController, UserService, UserRepository, UserDTO)
+  ✓ Wrote tests (3 test files, 14 test cases)
+  ✓ All tests passing
+  ✓ Opened PR #47: feat/add-users-endpoint
+
+→ Waiting for human approval to merge
+```
+
+---
+
 ## Dependency Graph
 
 ```
@@ -825,6 +917,9 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
                │
                ▼
          Phase 6 (Scale)
+               │
+               ▼
+         Phase 7 (Autonomy)
 ```
 
 **Notes:**
@@ -832,6 +927,7 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - Phase 4 requires both Pipeline and Observability
 - Phase 5 builds on all previous phases
 - Phase 6 is additive and can be done incrementally
+- Phase 7 builds on Phase 5's knowledge base and Phase 6's templates for multi-language agent support
 
 ---
 
@@ -875,6 +971,11 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 ### Phase 6 (Scale)
 - [ ] All 6 templates working
 - [ ] Cloud deployment verified on 1+ provider
+
+### Phase 7 (Autonomy)
+- [ ] Virtual employee completes a feature task end-to-end (code + tests + PR)
+- [ ] Bug fixer resolves a real alert without human intervention
+- [ ] Agent actions pass human review > 70% of the time
 
 ---
 
