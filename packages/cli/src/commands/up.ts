@@ -3,9 +3,36 @@ import chalk from "chalk";
 import ora from "ora";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 import { loadConfig, findProjectDir, type ProjectConfig } from "../utils/config.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
+import { toExecError } from "../utils/errors.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
+
+async function ensureDashboardImage(): Promise<void> {
+  try {
+    await execa("docker", ["image", "inspect", "blissful-infra-dashboard:latest"], { stdio: "pipe" });
+  } catch {
+    const spinner = ora("Building dashboard image (first time only)...").start();
+    try {
+      await execa("docker", [
+        "build", "-f", "Dockerfile.dashboard",
+        "-t", "blissful-infra-dashboard:latest", ".",
+      ], { cwd: REPO_ROOT, stdio: "pipe" });
+      spinner.succeed("Dashboard image built");
+    } catch (error) {
+      spinner.fail("Failed to build dashboard image");
+      const execError = toExecError(error);
+      if (execError.stderr) {
+        console.error(chalk.dim(execError.stderr));
+      }
+      throw error;
+    }
+  }
+}
 
 async function checkDockerRunning(): Promise<boolean> {
   try {
@@ -73,6 +100,8 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim("  • Kafka:       ") + chalk.cyan("localhost:9092"));
       console.log(chalk.dim("  • Nginx:       ") + chalk.cyan("http://localhost"));
     }
+
+    console.log(chalk.dim("  • Dashboard:   ") + chalk.cyan("http://localhost:3002"));
 
     console.log();
     console.log(chalk.dim("Run"), chalk.cyan("blissful-infra logs"), chalk.dim("to view logs"));
@@ -216,6 +245,23 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     // Generate nginx.conf
     await generateNginxConf(config, projectDir, isFullstack);
   }
+
+  // Dashboard service
+  services.dashboard = {
+    image: "blissful-infra-dashboard:latest",
+    container_name: `${config.name}-dashboard`,
+    ports: ["3002:3002"],
+    environment: {
+      PROJECTS_DIR: "/projects",
+      DASHBOARD_DIST_DIR: "/app/dashboard-dist",
+      DASHBOARD_PORT: "3002",
+      DOCKER_MODE: "true",
+    },
+    volumes: [
+      "/var/run/docker.sock:/var/run/docker.sock",
+      `.:/projects/${config.name}`,
+    ],
+  };
 
   // Build volumes object
   const volumes: Record<string, string | null> = {};
@@ -392,6 +438,7 @@ export async function upAction(name?: string): Promise<void> {
     process.exit(1);
   }
 
+  await ensureDashboardImage();
   await startEnvironment(config, projectDir);
 }
 
