@@ -162,7 +162,7 @@ function replaceVariables(content: string, variables: TemplateVariables): string
 }
 
 export function getAvailableTemplates(): string[] {
-  return ["spring-boot", "react-vite"];
+  return ["spring-boot", "react-vite", "ai-pipeline"];
 }
 
 export function getTemplateDir(templateName: string): string {

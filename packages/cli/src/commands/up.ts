@@ -101,6 +101,10 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim("  • Nginx:       ") + chalk.cyan("http://localhost"));
     }
 
+    if (config.plugins?.includes("ai-pipeline")) {
+      console.log(chalk.dim("  • AI Pipeline: ") + chalk.cyan("http://localhost:8090"));
+    }
+
     console.log(chalk.dim("  • Dashboard:   ") + chalk.cyan("http://localhost:3002"));
 
     console.log();
@@ -244,6 +248,27 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
 
     // Generate nginx.conf
     await generateNginxConf(config, projectDir, isFullstack);
+  }
+
+  // AI Pipeline plugin
+  if (config.plugins?.includes("ai-pipeline")) {
+    services["ai-pipeline"] = {
+      build: {
+        context: isFullstack ? "./ai-pipeline" : "./ai-pipeline",
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${config.name}-ai-pipeline`,
+      ports: ["8090:8090"],
+      environment: {
+        PROJECT_NAME: config.name,
+        KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
+        PIPELINE_MODE: "streaming",
+        SPARK_MASTER: "local[*]",
+      },
+      depends_on: {
+        kafka: { condition: "service_healthy" },
+      },
+    };
   }
 
   // Dashboard service

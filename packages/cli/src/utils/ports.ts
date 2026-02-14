@@ -52,6 +52,7 @@ export async function checkPorts(
 export function getRequiredPorts(config: {
   type?: string;
   database?: string;
+  plugins?: string;
 }): { port: number; service: string }[] {
   const ports: { port: number; service: string }[] = [];
   const isFrontendOnly = config.type === "frontend";
@@ -79,6 +80,11 @@ export function getRequiredPorts(config: {
 
   // Dashboard port
   ports.push({ port: 3002, service: "Dashboard" });
+
+  // AI Pipeline port
+  if (config.plugins?.includes("ai-pipeline")) {
+    ports.push({ port: 8090, service: "AI Pipeline" });
+  }
 
   // Database ports
   if (config.database === "postgres" || config.database === "postgres-redis") {
