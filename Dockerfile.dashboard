@@ -2,7 +2,7 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /build/dashboard
 COPY packages/dashboard/package.json packages/dashboard/package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm i --ignore-scripts
 COPY packages/dashboard/ ./
 RUN npm run build
 
@@ -10,7 +10,7 @@ RUN npm run build
 FROM node:20-alpine AS cli-build
 WORKDIR /build/cli
 COPY packages/cli/package.json packages/cli/package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm i --ignore-scripts
 COPY packages/cli/ ./
 RUN npm run build
 
