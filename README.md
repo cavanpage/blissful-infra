@@ -43,11 +43,15 @@ blissful-infra start my-app --backend fastapi
 # Add a database
 blissful-infra start my-app --database postgres
 
+# Add plugins
+blissful-infra start my-app --plugins ai-pipeline
+
 # Full control
 blissful-infra start my-app \
   --backend spring-boot \
   --frontend react-vite \
-  --database postgres-redis
+  --database postgres-redis \
+  --plugins ai-pipeline
 ```
 
 ### Step-by-Step
@@ -154,6 +158,60 @@ blissful-infra dashboard --no-jenkins       # Don't start Jenkins
 | `react-vite` | React + Vite + TypeScript + TailwindCSS + React Query |
 | `nextjs` | Next.js + TypeScript + TailwindCSS |
 
+## Plugins
+
+Extend your project with optional plugins using the `--plugins` flag.
+
+### Available Plugins
+
+| Plugin | Description |
+|--------|-------------|
+| `ai-pipeline` | AI/ML pipeline with PySpark (batch + streaming), scikit-learn classifier, and FastAPI |
+
+### Usage
+
+```bash
+# Add a plugin when creating a project
+blissful-infra start my-app --plugins ai-pipeline
+
+# Multiple plugins (comma-separated)
+blissful-infra start my-app --plugins ai-pipeline,another-plugin
+
+# With create command
+blissful-infra create my-app --template fullstack --plugins ai-pipeline
+```
+
+When a plugin is added, its service is included in `docker-compose.yaml` and visible in the dashboard health checks.
+
+### AI Pipeline Plugin
+
+The `ai-pipeline` plugin adds a Python service that consumes Kafka events, classifies them using ML, and writes predictions back to Kafka.
+
+- **API:** `http://localhost:8090`
+- **Endpoints:**
+  - `GET /health` — Service health + pipeline status
+  - `POST /predict` — Classify a single event on demand
+  - `GET /predictions` — Recent predictions (last 100)
+  - `GET /pipeline/status` — Pipeline mode, running state, processed count
+- **Modes:** Streaming (Spark Structured Streaming) or Batch
+- **Stack:** Python 3.11, PySpark 3.5, FastAPI, scikit-learn, kafka-python-ng
+
+```
+my-app/
+├── ai-pipeline/          # AI/ML pipeline service
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/
+│       ├── main.py       # FastAPI endpoints
+│       ├── config.py     # Environment config
+│       ├── kafka_utils.py
+│       ├── model/
+│       │   └── classifier.py   # TF-IDF + Naive Bayes
+│       └── pipeline/
+│           ├── streaming.py    # Spark Structured Streaming
+│           └── batch.py        # Spark batch processing
+```
+
 ## Project Structure
 
 A fullstack project generates:
@@ -168,6 +226,7 @@ my-app/
 │   ├── src/
 │   ├── Dockerfile
 │   └── package.json
+├── ai-pipeline/          # (if --plugins ai-pipeline)
 ├── k8s/
 │   ├── base/             # Kubernetes manifests
 │   ├── overlays/         # Environment-specific configs
