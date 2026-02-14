@@ -3,10 +3,36 @@ import chalk from "chalk";
 import ora from "ora";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 import { copyTemplate, linkTemplate, getAvailableTemplates } from "../utils/template.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
+
+async function ensureDashboardImage(): Promise<void> {
+  try {
+    await execa("docker", ["image", "inspect", "blissful-infra-dashboard:latest"], { stdio: "pipe" });
+  } catch {
+    const spinner = ora("Building dashboard image (first time only)...").start();
+    try {
+      await execa("docker", [
+        "build", "-f", "Dockerfile.dashboard",
+        "-t", "blissful-infra-dashboard:latest", ".",
+      ], { cwd: REPO_ROOT, stdio: "pipe" });
+      spinner.succeed("Dashboard image built");
+    } catch (error) {
+      spinner.fail("Failed to build dashboard image");
+      const execError = toExecError(error);
+      if (execError.stderr) {
+        console.error(chalk.dim(execError.stderr));
+      }
+      throw error;
+    }
+  }
+}
 
 interface StartOptions {
   backend?: string;
@@ -146,6 +172,23 @@ async function generateDockerCompose(projectDir: string, name: string, database:
 
   // Generate nginx.conf
   await generateNginxConf(projectDir);
+
+  // Dashboard service
+  services.dashboard = {
+    image: "blissful-infra-dashboard:latest",
+    container_name: `${name}-dashboard`,
+    ports: ["3002:3002"],
+    environment: {
+      PROJECTS_DIR: "/projects",
+      DASHBOARD_DIST_DIR: "/app/dashboard-dist",
+      DASHBOARD_PORT: "3002",
+      DOCKER_MODE: "true",
+    },
+    volumes: [
+      "/var/run/docker.sock:/var/run/docker.sock",
+      `.:/projects/${name}`,
+    ],
+  };
 
   // Build volumes object
   const volumes: Record<string, null> = {};
@@ -397,7 +440,8 @@ docker-compose.override.yaml
     await generateDockerCompose(projectDir, name, database);
     composeSpinner.succeed("Generated docker-compose.yaml");
 
-    // Step 3: Start containers
+    // Step 3: Build dashboard image and start containers
+    await ensureDashboardImage();
     const startSpinner = ora("Building and starting containers...").start();
 
     try {
@@ -436,6 +480,7 @@ docker-compose.override.yaml
     if (database === "redis" || database === "postgres-redis") {
       console.log(chalk.dim("  Redis:       ") + chalk.cyan("localhost:6379"));
     }
+    console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));
     console.log();
     console.log(chalk.dim("Commands:"));
     console.log(chalk.dim("  cd ") + chalk.cyan(name));

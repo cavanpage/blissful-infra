@@ -1,5 +1,6 @@
 import http from "node:http";
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
@@ -125,6 +126,24 @@ interface ProjectStatus {
   database?: string;
   services: Service[];
 }
+
+const DOCKER_MODE = process.env.DOCKER_MODE === "true";
+
+const SERVICE_URLS: Record<string, string> = DOCKER_MODE
+  ? { backend: "http://app:8080", frontend: "http://frontend:80" }
+  : { backend: "http://localhost:8080", frontend: "http://localhost:3000" };
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
 
 export function createApiServer(workingDir: string, port = 3002) {
   const server = http.createServer(async (req, res) => {
@@ -713,6 +732,42 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // Static file serving for dashboard (Docker/production mode)
+      const dashboardDistDir = process.env.DASHBOARD_DIST_DIR;
+      if (dashboardDistDir && !url.pathname.startsWith("/api/")) {
+        const safePath = path.normalize(url.pathname).replace(/^(\.\.[/\\])+/, "");
+        const filePath = path.join(dashboardDistDir, safePath === "/" ? "index.html" : safePath);
+
+        try {
+          const fileStat = await fs.stat(filePath);
+          if (fileStat.isFile()) {
+            const ext = path.extname(filePath).toLowerCase();
+            res.writeHead(200, {
+              "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
+              "Content-Length": fileStat.size,
+            });
+            createReadStream(filePath).pipe(res);
+            return;
+          }
+        } catch {
+          // File not found, fall through to SPA handler
+        }
+
+        // SPA fallback: serve index.html for client-side routing
+        const indexPath = path.join(dashboardDistDir, "index.html");
+        try {
+          const indexStat = await fs.stat(indexPath);
+          res.writeHead(200, {
+            "Content-Type": "text/html",
+            "Content-Length": indexStat.size,
+          });
+          createReadStream(indexPath).pipe(res);
+          return;
+        } catch {
+          // index.html not found
+        }
+      }
+
       // 404 for unknown routes
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Not found" }));
@@ -1060,19 +1115,22 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
   const healthChecks: Array<{ name: string; url: string; port: number }> = [];
 
   // Backend health check (Spring Boot Actuator)
+  const backendUrl = SERVICE_URLS.backend;
   if (config?.backend === "spring-boot") {
-    healthChecks.push({ name: "backend", url: "http://localhost:8080/actuator/health", port: 8080 });
+    healthChecks.push({ name: "backend", url: `${backendUrl}/actuator/health`, port: 8080 });
   } else if (config?.backend === "fastapi") {
-    healthChecks.push({ name: "backend", url: "http://localhost:8000/health", port: 8000 });
+    const url = DOCKER_MODE ? "http://app:8000" : "http://localhost:8000";
+    healthChecks.push({ name: "backend", url: `${url}/health`, port: 8000 });
   } else if (config?.backend === "express") {
-    healthChecks.push({ name: "backend", url: "http://localhost:3001/health", port: 3001 });
+    const url = DOCKER_MODE ? "http://app:3001" : "http://localhost:3001";
+    healthChecks.push({ name: "backend", url: `${url}/health`, port: 3001 });
   } else if (config?.backend === "go-chi") {
-    healthChecks.push({ name: "backend", url: "http://localhost:8080/health", port: 8080 });
+    healthChecks.push({ name: "backend", url: `${backendUrl}/health`, port: 8080 });
   }
 
   // Frontend health check
   if (config?.frontend) {
-    healthChecks.push({ name: "frontend", url: "http://localhost:3000", port: 3000 });
+    healthChecks.push({ name: "frontend", url: SERVICE_URLS.frontend, port: 3000 });
   }
 
   // Database health checks
@@ -1184,7 +1242,7 @@ async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {
     const timeout = setTimeout(() => controller.abort(), 2000);
 
     // Fetch base metrics
-    const response = await fetch("http://localhost:8080/actuator/metrics/http.server.requests", {
+    const response = await fetch(`${SERVICE_URLS.backend}/actuator/metrics/http.server.requests`, {
       signal: controller.signal,
     });
 
@@ -1220,7 +1278,7 @@ async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {
     let status5xx = 0;
 
     try {
-      const promResponse = await fetch("http://localhost:8080/actuator/prometheus", {
+      const promResponse = await fetch(`${SERVICE_URLS.backend}/actuator/prometheus`, {
         signal: controller.signal,
       });
 
@@ -1510,7 +1568,8 @@ async function getPipelineStatus(
     }
   }
 
-  const jenkinsUrl = hasJenkinsfile ? `http://localhost:8081/job/${projectName}` : undefined;
+  const jenkinsHost = DOCKER_MODE ? "host.docker.internal" : "localhost";
+  const jenkinsUrl = hasJenkinsfile ? `http://${jenkinsHost}:8081/job/${projectName}` : undefined;
 
   // Try to fetch last build from Jenkins API
   let lastRun: PipelineStatus["lastRun"];
@@ -1519,14 +1578,14 @@ async function getPipelineStatus(
       const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
 
       // Try folder path first, then root
-      let jobApiUrl = `http://localhost:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
+      let jobApiUrl = `http://${jenkinsHost}:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
       let resp = await fetch(jobApiUrl, {
         headers: { Authorization: authHeader },
         signal: AbortSignal.timeout(3000),
       });
 
       if (!resp.ok) {
-        jobApiUrl = `http://localhost:8081/job/${projectName}/lastBuild/api/json`;
+        jobApiUrl = `http://${jenkinsHost}:8081/job/${projectName}/lastBuild/api/json`;
         resp = await fetch(jobApiUrl, {
           headers: { Authorization: authHeader },
           signal: AbortSignal.timeout(3000),
