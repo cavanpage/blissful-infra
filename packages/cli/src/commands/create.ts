@@ -5,6 +5,7 @@ import ora from "ora";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { copyTemplate, getAvailableTemplates } from "../utils/template.js";
+import { parsePluginSpecs, serializePluginSpecs, type PluginInstance } from "../utils/config.js";
 
 interface ProjectOptions {
   name: string;
@@ -13,7 +14,7 @@ interface ProjectOptions {
   frontend?: string;
   database: string;
   deployTarget: string;
-  plugins: string[];
+  plugins: PluginInstance[];
 }
 
 const BACKEND_TEMPLATES = [
@@ -183,7 +184,7 @@ async function promptForOptions(
     frontend: opts?.frontend || answers.frontend,
     database: projectType === "frontend" ? "none" : (opts?.database || answers.database),
     deployTarget: opts?.deploy || answers.deployTarget,
-    plugins: opts?.plugins ? opts.plugins.split(",").map(p => p.trim()) : [],
+    plugins: opts?.plugins ? parsePluginSpecs(opts.plugins.split(",").map(p => p.trim())) : [],
   };
 }
 
@@ -259,14 +260,16 @@ async function scaffoldProject(options: ProjectOptions): Promise<void> {
 
   // Copy plugin templates
   for (const plugin of options.plugins) {
-    const pluginDir = path.join(projectDir, plugin);
-    if (availableTemplates.includes(plugin)) {
-      spinner.text = `Copying ${plugin} plugin...`;
+    const pluginDir = path.join(projectDir, plugin.instance);
+    if (availableTemplates.includes(plugin.type)) {
+      spinner.text = `Copying ${plugin.instance} plugin...`;
       await fs.mkdir(pluginDir, { recursive: true });
-      await copyTemplate(plugin, pluginDir, {
+      await copyTemplate(plugin.type, pluginDir, {
         projectName: options.name,
         database: options.database,
         deployTarget: options.deployTarget,
+        instanceName: plugin.instance,
+        apiPort: 8090 + options.plugins.filter(p => p.type === plugin.type).indexOf(plugin),
       });
     }
   }
@@ -291,7 +294,7 @@ async function scaffoldProject(options: ProjectOptions): Promise<void> {
   );
 
   if (options.plugins.length > 0) {
-    configLines.push(`plugins: ${options.plugins.join(",")}`);
+    configLines.push(`plugins: ${serializePluginSpecs(options.plugins)}`);
   }
 
   configLines.push(

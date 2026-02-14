@@ -6,7 +6,7 @@ export default function Layout() {
       <header className="border-b">
         <nav className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/" className="text-xl font-bold">
-            {{PROJECT_NAME}}
+            {"{{PROJECT_NAME}}"}
           </Link>
           <div className="flex gap-4">
             <Link to="/" className="hover:text-primary/80">

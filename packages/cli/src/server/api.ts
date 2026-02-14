@@ -1147,11 +1147,13 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
     healthChecks.push({ name: "kafka", url: "", port: 9092 });
   }
 
-  // AI Pipeline health check
-  if (config?.plugins?.includes("ai-pipeline")) {
-    const aiUrl = DOCKER_MODE ? "http://ai-pipeline:8090" : "http://localhost:8090";
-    healthChecks.push({ name: "ai-pipeline", url: `${aiUrl}/health`, port: 8090 });
-  }
+  // AI Pipeline health checks
+  const aiPipelines = config?.plugins?.filter(p => p.type === "ai-pipeline") || [];
+  aiPipelines.forEach((plugin, index) => {
+    const port = config?.pluginConfigs?.[plugin.instance]?.port ?? (8090 + index);
+    const url = DOCKER_MODE ? `http://${plugin.instance}:${port}` : `http://localhost:${port}`;
+    healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
+  });
 
   // Check each service
   for (const check of healthChecks) {

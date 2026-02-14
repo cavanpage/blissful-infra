@@ -5,9 +5,10 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
-import { copyTemplate, linkTemplate, getAvailableTemplates } from "../utils/template.js";
+import { copyTemplate, getAvailableTemplates } from "../utils/template.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
+import { parsePluginSpecs, serializePluginSpecs, type PluginInstance } from "../utils/config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -48,6 +49,16 @@ const DEFAULTS = {
   database: "none",
 };
 
+async function openBrowser(url: string): Promise<void> {
+  const platform = process.platform;
+  const cmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
+  try {
+    await execa(cmd, [url], { stdio: "pipe" });
+  } catch {
+    // Silently ignore if browser can't be opened
+  }
+}
+
 async function checkDockerRunning(): Promise<boolean> {
   try {
     await execa("docker", ["info"], { stdio: "pipe" });
@@ -57,7 +68,7 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: string[] = []): Promise<void> {
+async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: PluginInstance[] = []): Promise<void> {
   const services: Record<string, unknown> = {};
 
   // Kafka service
@@ -174,26 +185,32 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   // Generate nginx.conf
   await generateNginxConf(projectDir);
 
-  // AI Pipeline plugin
-  if (plugins.includes("ai-pipeline")) {
-    services["ai-pipeline"] = {
+  // AI Pipeline plugins
+  const aiPipelines = plugins.filter(p => p.type === "ai-pipeline");
+  aiPipelines.forEach((plugin, index) => {
+    const port = 8090 + index;
+    services[plugin.instance] = {
       build: {
-        context: "./ai-pipeline",
+        context: `./${plugin.instance}`,
         dockerfile: "Dockerfile",
       },
-      container_name: `${name}-ai-pipeline`,
-      ports: ["8090:8090"],
+      container_name: `${name}-${plugin.instance}`,
+      ports: [`${port}:${port}`],
       environment: {
         PROJECT_NAME: name,
+        INSTANCE_NAME: plugin.instance,
         KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
         PIPELINE_MODE: "streaming",
         SPARK_MASTER: "local[*]",
+        API_PORT: String(port),
+        EVENTS_TOPIC: "events",
+        PREDICTIONS_TOPIC: aiPipelines.length > 1 ? `predictions-${plugin.instance}` : "predictions",
       },
       depends_on: {
         kafka: { condition: "service_healthy" },
       },
     };
-  }
+  });
 
   // Dashboard service
   services.dashboard = {
@@ -337,10 +354,10 @@ export const startCommand = new Command("start")
     const frontend = opts.frontend || DEFAULTS.frontend;
     const database = opts.database || DEFAULTS.database;
     const linkMode = opts.link || false;
-    const plugins = opts.plugins ? opts.plugins.split(",").map(p => p.trim()) : [];
+    const plugins = opts.plugins ? parsePluginSpecs(opts.plugins.split(",").map(p => p.trim())) : [];
 
     // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ type: "fullstack", database, plugins });
+    const requiredPorts = getRequiredPorts({ deployTarget: "local-only", name:"gg", type: "fullstack", database, plugins });
     const portResults = await checkPorts(requiredPorts);
     const conflicts = portResults.filter((p) => p.inUse);
 
@@ -372,67 +389,50 @@ export const startCommand = new Command("start")
 
     await fs.mkdir(projectDir, { recursive: true });
 
-    if (linkMode) {
-      // Link mode: create symlinks to template directories
-      scaffoldSpinner.text = `Linking ${backend} backend...`;
-      if (availableTemplates.includes(backend)) {
-        await linkTemplate(backend, path.join(projectDir, "backend"));
-      } else {
-        await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
-        scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
-        await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
-      }
+    // Copy template files (link mode no longer symlinks — templates contain
+    // conditional blocks like {{#IF_POSTGRES}} that must be processed)
+    await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
+    await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
 
-      scaffoldSpinner.text = `Linking ${frontend} frontend...`;
-      if (availableTemplates.includes(frontend)) {
-        await linkTemplate(frontend, path.join(projectDir, "frontend"));
-      } else {
-        await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
-        scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
-        await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
-      }
+    // Copy backend
+    if (availableTemplates.includes(backend)) {
+      scaffoldSpinner.text = `Copying ${backend} backend...`;
+      await copyTemplate(backend, path.join(projectDir, "backend"), {
+        projectName: name,
+        database,
+        deployTarget: "local-only",
+      });
     } else {
-      // Normal mode: copy template files
-      await fs.mkdir(path.join(projectDir, "backend"), { recursive: true });
-      await fs.mkdir(path.join(projectDir, "frontend"), { recursive: true });
+      scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
+      await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
+    }
 
-      // Copy backend
-      if (availableTemplates.includes(backend)) {
-        scaffoldSpinner.text = `Copying ${backend} backend...`;
-        await copyTemplate(backend, path.join(projectDir, "backend"), {
-          projectName: name,
-          database,
-          deployTarget: "local-only",
-        });
-      } else {
-        scaffoldSpinner.warn(`Backend '${backend}' not yet available, using placeholder`);
-        await fs.writeFile(path.join(projectDir, "backend", ".gitkeep"), `# ${backend} coming soon\n`);
-      }
-
-      // Copy frontend
-      if (availableTemplates.includes(frontend)) {
-        scaffoldSpinner.text = `Copying ${frontend} frontend...`;
-        await copyTemplate(frontend, path.join(projectDir, "frontend"), {
-          projectName: name,
-          database,
-          deployTarget: "local-only",
-        });
-      } else {
-        scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
-        await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
-      }
+    // Copy frontend
+    if (availableTemplates.includes(frontend)) {
+      scaffoldSpinner.text = `Copying ${frontend} frontend...`;
+      await copyTemplate(frontend, path.join(projectDir, "frontend"), {
+        projectName: name,
+        database,
+        deployTarget: "local-only",
+      });
+    } else {
+      scaffoldSpinner.warn(`Frontend '${frontend}' not yet available, using placeholder`);
+      await fs.writeFile(path.join(projectDir, "frontend", ".gitkeep"), `# ${frontend} coming soon\n`);
     }
 
     // Copy plugin templates
     for (const plugin of plugins) {
-      if (availableTemplates.includes(plugin)) {
-        scaffoldSpinner.text = `Copying ${plugin} plugin...`;
-        const pluginDir = path.join(projectDir, plugin);
+      if (availableTemplates.includes(plugin.type)) {
+        scaffoldSpinner.text = `Copying ${plugin.instance} plugin...`;
+        const pluginDir = path.join(projectDir, plugin.instance);
         await fs.mkdir(pluginDir, { recursive: true });
-        await copyTemplate(plugin, pluginDir, {
+        const index = plugins.filter(p => p.type === plugin.type).indexOf(plugin);
+        await copyTemplate(plugin.type, pluginDir, {
           projectName: name,
           database,
           deployTarget: "local-only",
+          instanceName: plugin.instance,
+          apiPort: 8090 + index,
         });
       }
     }
@@ -448,7 +448,7 @@ export const startCommand = new Command("start")
       "deploy_target: local-only",
     ];
     if (plugins.length > 0) {
-      configLines.push(`plugins: ${plugins.join(",")}`);
+      configLines.push(`plugins: ${serializePluginSpecs(plugins)}`);
     }
     await fs.writeFile(
       path.join(projectDir, "blissful-infra.yaml"),
@@ -523,11 +523,19 @@ docker-compose.override.yaml
     if (database === "redis" || database === "postgres-redis") {
       console.log(chalk.dim("  Redis:       ") + chalk.cyan("localhost:6379"));
     }
-    if (plugins.includes("ai-pipeline")) {
-      console.log(chalk.dim("  AI Pipeline: ") + chalk.cyan("http://localhost:8090"));
-    }
+    const aiPipelinesOut = plugins.filter(p => p.type === "ai-pipeline");
+    aiPipelinesOut.forEach((plugin, index) => {
+      const port = 8090 + index;
+      const label = aiPipelinesOut.length > 1 ? `AI Pipeline (${plugin.instance})` : "AI Pipeline";
+      console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
+    });
     console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));
     console.log();
+
+    // Open browser tabs
+    await openBrowser("http://localhost:3000");
+    await openBrowser("http://localhost:3002");
+
     console.log(chalk.dim("Commands:"));
     console.log(chalk.dim("  cd ") + chalk.cyan(name));
     console.log(chalk.dim("  blissful-infra logs     ") + chalk.dim("# View logs"));
