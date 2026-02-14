@@ -337,10 +337,13 @@ export const startCommand = new Command("start")
     const frontend = opts.frontend || DEFAULTS.frontend;
     const database = opts.database || DEFAULTS.database;
     const linkMode = opts.link || false;
-    const plugins = opts.plugins ? opts.plugins.split(",").map(p => p.trim()) : [];
+    const plugins = opts.plugins ? opts.plugins.split(",").map(p => { return {
+      type: p,
+      instance: p}
+    }) : [];
 
     // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ type: "fullstack", database, plugins });
+    const requiredPorts = getRequiredPorts({ deployTarget: "local-only", name:"gg", type: "fullstack", database, plugins });
     const portResults = await checkPorts(requiredPorts);
     const conflicts = portResults.filter((p) => p.inUse);
 
@@ -425,11 +428,11 @@ export const startCommand = new Command("start")
 
     // Copy plugin templates
     for (const plugin of plugins) {
-      if (availableTemplates.includes(plugin)) {
+      if (availableTemplates.includes(plugin.type)) {
         scaffoldSpinner.text = `Copying ${plugin} plugin...`;
-        const pluginDir = path.join(projectDir, plugin);
+        const pluginDir = path.join(projectDir, plugin.type);
         await fs.mkdir(pluginDir, { recursive: true });
-        await copyTemplate(plugin, pluginDir, {
+        await copyTemplate(plugin.type, pluginDir, {
           projectName: name,
           database,
           deployTarget: "local-only",
@@ -480,7 +483,7 @@ docker-compose.override.yaml
 
     // Step 2: Generate docker-compose
     const composeSpinner = ora("Generating docker-compose.yaml...").start();
-    await generateDockerCompose(projectDir, name, database, plugins);
+    await generateDockerCompose(projectDir, name, database, plugins.map(x => x.type));
     composeSpinner.succeed("Generated docker-compose.yaml");
 
     // Step 3: Build dashboard image and start containers
@@ -523,7 +526,7 @@ docker-compose.override.yaml
     if (database === "redis" || database === "postgres-redis") {
       console.log(chalk.dim("  Redis:       ") + chalk.cyan("localhost:6379"));
     }
-    if (plugins.includes("ai-pipeline")) {
+    if (plugins?.map(x => x.type).includes("ai-pipeline")) {
       console.log(chalk.dim("  AI Pipeline: ") + chalk.cyan("http://localhost:8090"));
     }
     console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));

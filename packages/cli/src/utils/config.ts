@@ -37,6 +37,18 @@ export interface CanaryConfig {
   };
 }
 
+export interface PluginInstance {
+  type: string;      // template name (e.g. "ai-pipeline")
+  instance: string;  // unique instance name (e.g. "classifier")
+}
+
+export interface PluginConfig {
+  mode?: string;
+  port?: number;
+  events_topic?: string;
+  predictions_topic?: string;
+}
+
 export interface ProjectConfig {
   name: string;
   type: string;
@@ -52,7 +64,33 @@ export interface ProjectConfig {
   // Phase 4 additions
   canary?: CanaryConfig;
   // Plugins
-  plugins?: string[];
+  plugins?: PluginInstance[];
+  pluginConfigs?: Record<string, PluginConfig>;
+}
+
+/**
+ * Parse plugin specs like "ai-pipeline", "ai-pipeline:classifier" into PluginInstance objects.
+ */
+export function parsePluginSpecs(specs: string[]): PluginInstance[] {
+  return specs.map(spec => {
+    const colonIndex = spec.indexOf(":");
+    if (colonIndex === -1) {
+      return { type: spec, instance: spec };
+    }
+    return {
+      type: spec.substring(0, colonIndex),
+      instance: spec.substring(colonIndex + 1),
+    };
+  });
+}
+
+/**
+ * Serialize plugin instances back to spec strings for YAML storage.
+ */
+export function serializePluginSpecs(plugins: PluginInstance[]): string {
+  return plugins
+    .map(p => p.type === p.instance ? p.type : `${p.type}:${p.instance}`)
+    .join(",");
 }
 
 export async function loadConfig(projectDir?: string): Promise<ProjectConfig | null> {
@@ -112,6 +150,58 @@ function parseYaml(content: string): ProjectConfig {
     frontend: config.frontend,
     database: config.database || "none",
     deployTarget: config.deploy_target || "local-only",
-    plugins: config.plugins ? config.plugins.split(",").map(p => p.trim()).filter(Boolean) : undefined,
+    plugins: config.plugins ? parsePluginSpecs(config.plugins.split(",").map(p => p.trim()).filter(Boolean)) : undefined,
+    pluginConfigs: parsePluginConfigs(content),
   };
+}
+
+function parsePluginConfigs(content: string): Record<string, PluginConfig> | undefined {
+  const configs: Record<string, PluginConfig> = {};
+  const lines = content.split("\n");
+  let inPluginConfig = false;
+  let currentInstance: string | null = null;
+
+  for (const line of lines) {
+    // Detect start of plugin_config block
+    if (/^plugin_config:\s*$/.test(line)) {
+      inPluginConfig = true;
+      continue;
+    }
+
+    if (!inPluginConfig) continue;
+
+    // Non-indented line means we've left the plugin_config block
+    if (line.length > 0 && !line.startsWith(" ") && !line.startsWith("\t")) {
+      break;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Instance name line (2-space indent): "  classifier:"
+    const instanceMatch = line.match(/^ {2}(\w[\w-]*):\s*$/);
+    if (instanceMatch) {
+      currentInstance = instanceMatch[1];
+      configs[currentInstance] = {};
+      continue;
+    }
+
+    // Config value line (4-space indent): "    mode: streaming"
+    const valueMatch = line.match(/^ {4}(\w[\w_]*):\s*(.+)$/);
+    if (valueMatch && currentInstance && configs[currentInstance]) {
+      const [, key, value] = valueMatch;
+      const trimVal = value.trim();
+      if (key === "port") {
+        configs[currentInstance].port = parseInt(trimVal, 10);
+      } else if (key === "mode") {
+        configs[currentInstance].mode = trimVal;
+      } else if (key === "events_topic") {
+        configs[currentInstance].events_topic = trimVal;
+      } else if (key === "predictions_topic") {
+        configs[currentInstance].predictions_topic = trimVal;
+      }
+    }
+  }
+
+  return Object.keys(configs).length > 0 ? configs : undefined;
 }

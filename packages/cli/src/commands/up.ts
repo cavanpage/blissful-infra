@@ -101,7 +101,7 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim("  • Nginx:       ") + chalk.cyan("http://localhost"));
     }
 
-    if (config.plugins?.includes("ai-pipeline")) {
+    if (config.plugins?.map(x => x.type).includes("ai-pipeline")) {
       console.log(chalk.dim("  • AI Pipeline: ") + chalk.cyan("http://localhost:8090"));
     }
 
@@ -251,7 +251,7 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
   }
 
   // AI Pipeline plugin
-  if (config.plugins?.includes("ai-pipeline")) {
+  if (config.plugins?.map(x => x.type).includes("ai-pipeline")) {
     services["ai-pipeline"] = {
       build: {
         context: isFullstack ? "./ai-pipeline" : "./ai-pipeline",

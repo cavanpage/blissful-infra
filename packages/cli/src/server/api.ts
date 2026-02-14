@@ -1148,7 +1148,7 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
   }
 
   // AI Pipeline health check
-  if (config?.plugins?.includes("ai-pipeline")) {
+  if (config?.plugins?.map(x => x.type).includes("ai-pipeline")) {
     const aiUrl = DOCKER_MODE ? "http://ai-pipeline:8090" : "http://localhost:8090";
     healthChecks.push({ name: "ai-pipeline", url: `${aiUrl}/health`, port: 8090 });
   }

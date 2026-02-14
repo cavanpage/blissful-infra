@@ -1,4 +1,5 @@
 import net from "node:net";
+import { ProjectConfig } from "./config.js";
 
 export interface PortCheck {
   port: number;
@@ -49,11 +50,7 @@ export async function checkPorts(
 /**
  * Get the default ports used by blissful-infra based on config
  */
-export function getRequiredPorts(config: {
-  type?: string;
-  database?: string;
-  plugins?: string[];
-}): { port: number; service: string }[] {
+export function getRequiredPorts(config: ProjectConfig): { port: number; service: string }[] {
   const ports: { port: number; service: string }[] = [];
   const isFrontendOnly = config.type === "frontend";
 
@@ -82,7 +79,7 @@ export function getRequiredPorts(config: {
   ports.push({ port: 3002, service: "Dashboard" });
 
   // AI Pipeline port
-  if (config.plugins?.includes("ai-pipeline")) {
+  if (config.plugins?.map(x => x.type).includes("ai-pipeline")) {
     ports.push({ port: 8090, service: "AI Pipeline" });
   }
 
