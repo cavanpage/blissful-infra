@@ -340,7 +340,7 @@ export const startCommand = new Command("start")
     const plugins = opts.plugins ? opts.plugins.split(",").map(p => p.trim()) : [];
 
     // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ type: "fullstack", database, plugins: plugins.join(",") });
+    const requiredPorts = getRequiredPorts({ type: "fullstack", database, plugins });
     const portResults = await checkPorts(requiredPorts);
     const conflicts = portResults.filter((p) => p.inUse);
 

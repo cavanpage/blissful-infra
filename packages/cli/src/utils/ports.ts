@@ -52,7 +52,7 @@ export async function checkPorts(
 export function getRequiredPorts(config: {
   type?: string;
   database?: string;
-  plugins?: string;
+  plugins?: string[];
 }): { port: number; service: string }[] {
   const ports: { port: number; service: string }[] = [];
   const isFrontendOnly = config.type === "frontend";
