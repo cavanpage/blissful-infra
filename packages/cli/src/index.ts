@@ -117,13 +117,65 @@ async function main() {
           await logsAction(projectName, opts);
         });
 
-      projectProgram
+      // Agent command with subcommands
+      const projectAgent = projectProgram
         .command("agent")
-        .description("AI-powered infrastructure assistant")
+        .description("AI agents and virtual employees");
+
+      projectAgent
+        .command("chat")
+        .description("Interactive AI assistant for debugging")
         .option("-q, --query <query>", "Single query mode (non-interactive)")
         .option("-m, --model <model>", "Override model selection")
         .action(async (opts: { query?: string; model?: string }) => {
           await agentAction(projectName, opts);
+        });
+
+      projectAgent
+        .command("hire")
+        .description("Hire a virtual employee")
+        .argument("<role>", "Agent role")
+        .option("-n, --name <name>", "Agent name")
+        .action(async (role: string, opts: { name?: string }) => {
+          // Delegate to the global agent hire command
+          const { agentCommand: ac } = await import("./commands/agent.js");
+          ac.parse(["node", "blissful-infra", "hire", role, ...(opts.name ? ["-n", opts.name] : [])]);
+        });
+
+      projectAgent
+        .command("fire")
+        .description("Fire a virtual employee")
+        .argument("<name>", "Agent name")
+        .action(async (name: string) => {
+          const { agentCommand: ac } = await import("./commands/agent.js");
+          ac.parse(["node", "blissful-infra", "fire", name]);
+        });
+
+      projectAgent
+        .command("list")
+        .description("List active virtual employees")
+        .action(async () => {
+          const { agentCommand: ac } = await import("./commands/agent.js");
+          ac.parse(["node", "blissful-infra", "list"]);
+        });
+
+      projectAgent
+        .command("assign")
+        .description("Assign a task to a virtual employee")
+        .argument("<name>", "Agent name")
+        .argument("<task>", "Task description")
+        .action(async (name: string, task: string) => {
+          const { agentCommand: ac } = await import("./commands/agent.js");
+          ac.parse(["node", "blissful-infra", "assign", name, task]);
+        });
+
+      projectAgent
+        .command("status")
+        .description("Show agent progress")
+        .argument("<name>", "Agent name")
+        .action(async (name: string) => {
+          const { agentCommand: ac } = await import("./commands/agent.js");
+          ac.parse(["node", "blissful-infra", "status", name]);
         });
 
       // Phase 2 commands

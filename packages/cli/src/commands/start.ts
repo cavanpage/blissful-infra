@@ -212,6 +212,34 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     };
   });
 
+  // Agent service plugins
+  const agentServices = plugins.filter(p => p.type === "agent-service");
+  agentServices.forEach((plugin, index) => {
+    const port = 8095 + index;
+    services[plugin.instance] = {
+      build: {
+        context: `./${plugin.instance}`,
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${name}-${plugin.instance}`,
+      ports: [`${port}:${port}`],
+      environment: {
+        PROJECT_NAME: name,
+        INSTANCE_NAME: plugin.instance,
+        API_PORT: String(port),
+        ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}",
+        AI_PROVIDER: "${AI_PROVIDER:-claude}",
+        AI_MODEL: "${AI_MODEL:-claude-sonnet-4-20250514}",
+        WORKSPACE_DIR: "/workspace",
+        STATE_DIR: "/data/agent-state",
+      },
+      volumes: [
+        ".:/workspace:rw",
+        `${name}-agent-state:/data/agent-state`,
+      ],
+    };
+  });
+
   // Dashboard service
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -233,6 +261,9 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   const volumes: Record<string, null> = {};
   if (database === "postgres" || database === "postgres-redis") {
     volumes[`${name}-postgres-data`] = null;
+  }
+  if (agentServices.length > 0) {
+    volumes[`${name}-agent-state`] = null;
   }
 
   const compose: Record<string, unknown> = { services };
@@ -527,6 +558,12 @@ docker-compose.override.yaml
     aiPipelinesOut.forEach((plugin, index) => {
       const port = 8090 + index;
       const label = aiPipelinesOut.length > 1 ? `AI Pipeline (${plugin.instance})` : "AI Pipeline";
+      console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
+    });
+    const agentServicesOut = plugins.filter(p => p.type === "agent-service");
+    agentServicesOut.forEach((plugin, index) => {
+      const port = 8095 + index;
+      const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
       console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
     });
     console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));

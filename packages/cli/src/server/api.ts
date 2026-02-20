@@ -1155,6 +1155,14 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
     healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
   });
 
+  // Agent service health checks
+  const agentServices = config?.plugins?.filter(p => p.type === "agent-service") || [];
+  agentServices.forEach((plugin, index) => {
+    const port = config?.pluginConfigs?.[plugin.instance]?.port ?? (8095 + index);
+    const url = DOCKER_MODE ? `http://${plugin.instance}:${port}` : `http://localhost:${port}`;
+    healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
+  });
+
   // Check each service
   for (const check of healthChecks) {
     const startTime = Date.now();

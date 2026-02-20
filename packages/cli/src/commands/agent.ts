@@ -281,12 +281,233 @@ export async function agentAction(name?: string, opts: AgentOptions = {}): Promi
   }
 }
 
+// --- Virtual Employee subcommands (Phase 7) ---
+
+const AGENT_SERVICE_URL = "http://localhost:8095";
+
+async function hireAction(role: string, opts: { name?: string; port?: string }): Promise<void> {
+  if (!opts.name) {
+    console.error(chalk.red("--name is required"));
+    console.error(chalk.dim("Usage: blissful-infra agent hire <role> --name <name>"));
+    process.exit(1);
+  }
+
+  const spinner = ora(`Hiring ${role} "${opts.name}"...`).start();
+  try {
+    const response = await fetch(`${AGENT_SERVICE_URL}/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: opts.name, role }),
+    });
+    if (!response.ok) {
+      const err = await response.json() as { detail?: string };
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    spinner.succeed(`Virtual employee "${opts.name}" (${role}) is online`);
+  } catch (error) {
+    spinner.fail(`Failed to hire "${opts.name}"`);
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      console.error(chalk.dim("Is the agent-service running? Start with: --plugins agent-service"));
+    }
+  }
+}
+
+async function fireAction(name: string): Promise<void> {
+  const spinner = ora(`Firing "${name}"...`).start();
+  try {
+    const response = await fetch(`${AGENT_SERVICE_URL}/agents/${name}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const err = await response.json() as { detail?: string };
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    spinner.succeed(`Virtual employee "${name}" terminated`);
+  } catch (error) {
+    spinner.fail(`Failed to fire "${name}"`);
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+  }
+}
+
+async function listAction(): Promise<void> {
+  const spinner = ora("Fetching agents...").start();
+  try {
+    const response = await fetch(`${AGENT_SERVICE_URL}/agents`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const agents = await response.json() as Array<{
+      name: string; role: string; status: string;
+      current_task?: { description: string; status: string };
+      created_at: string;
+    }>;
+    spinner.stop();
+
+    if (agents.length === 0) {
+      console.log(chalk.dim("No virtual employees active."));
+      console.log(chalk.dim("Hire one with: blissful-infra agent hire feature-engineer --name alice"));
+      return;
+    }
+
+    console.log();
+    console.log(chalk.bold("Virtual Employees"));
+    console.log();
+    console.log(
+      chalk.dim("Name".padEnd(20) + "Role".padEnd(22) + "Status".padEnd(18) + "Task")
+    );
+    console.log(chalk.dim("-".repeat(75)));
+
+    for (const agent of agents) {
+      const statusColor = agent.status === "idle" ? chalk.green :
+        agent.status === "working" ? chalk.yellow :
+        agent.status === "awaiting-review" ? chalk.cyan :
+        chalk.red;
+
+      const taskDesc = agent.current_task?.description?.slice(0, 30) || "-";
+      console.log(
+        chalk.white(agent.name.padEnd(20)) +
+        chalk.dim(agent.role.padEnd(22)) +
+        statusColor(agent.status.padEnd(18)) +
+        chalk.dim(taskDesc)
+      );
+    }
+    console.log();
+  } catch (error) {
+    spinner.fail("Failed to fetch agents");
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+  }
+}
+
+async function assignAction(name: string, task: string): Promise<void> {
+  const spinner = ora(`Assigning task to ${name}...`).start();
+  try {
+    const response = await fetch(`${AGENT_SERVICE_URL}/agents/${name}/assign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: task }),
+    });
+    if (!response.ok) {
+      const err = await response.json() as { detail?: string };
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    const result = await response.json() as { task_id: string };
+    spinner.succeed(`Task assigned to ${name} (${result.task_id})`);
+    console.log(chalk.dim(`Check progress: blissful-infra agent status ${name}`));
+  } catch (error) {
+    spinner.fail(`Failed to assign task to ${name}`);
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+  }
+}
+
+async function statusAction(name: string): Promise<void> {
+  try {
+    const response = await fetch(`${AGENT_SERVICE_URL}/agents/${name}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.error(chalk.red(`Agent "${name}" not found.`));
+      } else {
+        console.error(chalk.red(`HTTP ${response.status}`));
+      }
+      return;
+    }
+    const agent = await response.json() as {
+      name: string; role: string; status: string;
+      current_task?: {
+        description: string; status: string;
+        steps: Array<{ description: string; status: string }>;
+        created_at: string; completed_at?: string;
+      };
+    };
+
+    console.log();
+    const statusColor = agent.status === "idle" ? chalk.green :
+      agent.status === "working" ? chalk.yellow :
+      agent.status === "awaiting-review" ? chalk.cyan :
+      chalk.red;
+
+    console.log(chalk.bold(`Agent: ${agent.name}`) + chalk.dim(` (${agent.role})`));
+    console.log(chalk.dim("Status: ") + statusColor(agent.status));
+
+    if (agent.current_task) {
+      console.log(chalk.dim("Current Task: ") + chalk.white(agent.current_task.description));
+      console.log();
+
+      if (agent.current_task.steps.length > 0) {
+        console.log(chalk.bold("Progress:"));
+        for (const step of agent.current_task.steps) {
+          const icon = step.status === "completed" ? chalk.green("  ✓") :
+            step.status === "in-progress" ? chalk.yellow("  ◦") :
+            chalk.dim("  ○");
+          console.log(`${icon} ${step.description}`);
+        }
+      }
+
+      if (agent.status === "awaiting-review") {
+        console.log();
+        console.log(chalk.cyan("→ Waiting for human approval"));
+      }
+    } else {
+      console.log(chalk.dim("No active task."));
+    }
+    console.log();
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+  }
+}
+
+// --- Command registration ---
+
 export const agentCommand = new Command("agent")
-  .description("AI-powered infrastructure assistant")
-  .argument("[name]", "Project name (if running from parent directory)")
-  .option("-q, --query <query>", "Single query mode (non-interactive)")
-  .option("-m, --model <model>", "Override model selection")
-  .option("-p, --provider <provider>", "AI provider: claude or ollama")
-  .action(async (name: string | undefined, opts: AgentOptions) => {
-    await agentAction(name, opts);
-  });
+  .description("AI agents and virtual employees")
+  .addCommand(
+    new Command("chat")
+      .description("Interactive AI assistant for debugging")
+      .argument("[name]", "Project name (if running from parent directory)")
+      .option("-q, --query <query>", "Single query mode (non-interactive)")
+      .option("-m, --model <model>", "Override model selection")
+      .option("-p, --provider <provider>", "AI provider: claude or ollama")
+      .action(async (name: string | undefined, opts: AgentOptions) => {
+        await agentAction(name, opts);
+      })
+  )
+  .addCommand(
+    new Command("hire")
+      .description("Hire a virtual employee")
+      .argument("<role>", "Agent role (feature-engineer)")
+      .option("-n, --name <name>", "Agent name (required)")
+      .option("--port <port>", "Agent service port", "8095")
+      .action(hireAction)
+  )
+  .addCommand(
+    new Command("fire")
+      .description("Fire a virtual employee")
+      .argument("<name>", "Agent name")
+      .action(fireAction)
+  )
+  .addCommand(
+    new Command("list")
+      .description("List active virtual employees")
+      .action(listAction)
+  )
+  .addCommand(
+    new Command("assign")
+      .description("Assign a task to a virtual employee")
+      .argument("<name>", "Agent name")
+      .argument("<task>", "Task description")
+      .action(assignAction)
+  )
+  .addCommand(
+    new Command("status")
+      .description("Show agent progress and task details")
+      .argument("<name>", "Agent name")
+      .action(statusAction)
+  );
