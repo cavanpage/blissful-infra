@@ -978,7 +978,66 @@ The core of the suggest-first model. Agent produces proposed changes without tou
 - [ ] **`agent reject <name>`** — discards suggestion, resets agent to idle
 - [ ] **Revision history** — track each revision of a suggestion (v1 → v2 → v3)
 
-### 7.3 Virtual Employee Roles
+### 7.3 Watchdog Mode (Human-in-the-Loop Debugging)
+The agent runs as a live debugging companion while your app is running. Instead of waiting for you to notice errors, the agent watches container logs and health checks, diagnoses issues automatically, and prompts you to investigate.
+
+**How it works:**
+```
+┌─────────────────────────────────────┐
+│         Running Containers          │
+│  backend, frontend, kafka, db...    │
+└──────────────┬──────────────────────┘
+               │ logs + health checks
+┌──────────────▼──────────────────────┐
+│          Watchdog Agent             │
+│  Monitors: stdout/stderr, /health  │
+│  Detects: crashes, 5xx, exceptions │
+│  Analyzes: reads code (read-only)  │
+│  Produces: diagnosis + suggested   │
+│            fix (in-memory diff)    │
+└──────────────┬──────────────────────┘
+               │ notification
+┌──────────────▼──────────────────────┐
+│          Developer CLI              │
+│                                     │
+│  ⚠ [alice] NullPointerException    │
+│    in UserService.java:42           │
+│    Suggested fix ready.             │
+│                                     │
+│  [Investigate]  [Silence]           │
+└─────────────────────────────────────┘
+```
+
+**User actions on alert:**
+- **Investigate** — opens the diagnosis + suggested fix diff (enters `review → revise → accept` flow)
+- **Silence** — mutes that error pattern. Options:
+  - `silence 10m` — mute for 10 minutes
+  - `silence this` — mute this specific error pattern permanently
+  - `silence all` — pause all watchdog alerts
+
+**What gets detected:**
+- Container crashes / restarts (health check failures)
+- HTTP 5xx responses in logs
+- Unhandled exceptions / stack traces
+- OOM kills
+- Connection refused errors (database, Kafka, external services)
+
+**Integration with existing phases:**
+- Reads Phase 3 health checks and metrics (already polling)
+- Queries Phase 5 knowledge base for similar past incidents
+- Suggested fixes follow the same suggest-first model (no writes until accept)
+
+- [ ] Log watcher — stream container logs, detect error patterns (regex + LLM classification)
+- [ ] Health check watcher — tie into existing `api.ts` health polling
+- [ ] Auto-diagnosis — agent reads relevant source code when error detected
+- [ ] CLI notifications — prompt user with `[Investigate] [Silence]` choices
+- [ ] Silence system — per-pattern, timed, and global silence modes
+- [ ] `agent watch start` — enable watchdog mode for an agent
+- [ ] `agent watch stop` — disable watchdog mode
+- [ ] `agent watch silences` — list active silences
+- [ ] `agent watch clear-silence <id>` — remove a silence rule
+
+### 7.4 Virtual Employee Roles
 Each role is a LangGraph StateGraph with a specialized system prompt and read-only tool set. Write tools only activate on accept.
 
 | Role | Trigger | Reads | Suggests |
@@ -993,7 +1052,7 @@ Each role is a LangGraph StateGraph with a specialized system prompt and read-on
 - [ ] SRE Bot — reads Phase 3 metrics and Phase 4 chaos results
 - [ ] Docs Writer — scans code for undocumented endpoints/models
 
-### 7.4 Tool Graph
+### 7.5 Tool Graph
 Two phases of tools, separated by the human approval boundary.
 
 **Read tools (always available):**
@@ -1009,13 +1068,13 @@ Two phases of tools, separated by the human approval boundary.
 - [ ] `create_pr` — open PR on GitHub
 - [ ] `run_tests` — verify changes after apply
 
-### 7.5 Dashboard Integration
+### 7.6 Dashboard Integration
 - [ ] Suggestion viewer — see proposed diffs in the browser with syntax highlighting
 - [ ] Accept/reject/revise buttons — one-click actions from dashboard
 - [ ] Agent activity feed — recent suggestions across all agents
 - [ ] Acceptance rate tracking — which agents produce useful suggestions
 
-### 7.6 CLI Commands
+### 7.7 CLI Commands
 - [x] `blissful-infra agent chat` — Interactive AI assistant (legacy, now a subcommand)
 - [x] `blissful-infra agent hire <role> --name <n>` — Spawn a virtual employee
 - [x] `blissful-infra agent fire <name>` — Stop a virtual employee
@@ -1026,6 +1085,10 @@ Two phases of tools, separated by the human approval boundary.
 - [ ] `blissful-infra agent revise <name> "<feedback>"` — Request changes to suggestion
 - [ ] `blissful-infra agent accept <name>` — Apply suggestion, create branch + PR
 - [ ] `blissful-infra agent reject <name>` — Discard suggestion
+- [ ] `blissful-infra agent watch start` — Enable watchdog mode (monitors logs + health)
+- [ ] `blissful-infra agent watch stop` — Disable watchdog mode
+- [ ] `blissful-infra agent watch silences` — List active silence rules
+- [ ] `blissful-infra agent watch clear-silence <id>` — Remove a silence rule
 
 **Location:** `packages/cli/templates/agent-service/`, `packages/cli/src/commands/agent.ts`
 
@@ -1094,6 +1157,39 @@ $ blissful-infra agent accept alice
 ✓ Branch created: feat/add-users-endpoint
 ✓ Committed: "Add /users endpoint with CRUD operations"
 ✓ PR opened: #47
+
+# Watchdog: live debugging while app is running
+$ blissful-infra agent watch start
+✓ Watchdog enabled — monitoring container logs and health checks
+
+# ... developer is working, app throws an error ...
+
+⚠ [watchdog] NullPointerException in UserService.java:42
+  Cause: req.getUser() returns null when auth header missing
+  Suggested fix ready (1 file, 3 lines changed)
+
+  [Investigate]  [Silence]
+
+$ blissful-infra agent review watchdog
+Suggestion: Add null check for user in UserService
+
+--- a/src/main/kotlin/.../service/UserService.kt
++++ b/src/main/kotlin/.../service/UserService.kt
+@@ -40,6 +40,8 @@
+     fun getUser(req: Request): User {
++        val user = req.getUser()
++            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing auth")
+-        return req.getUser()
+
+$ blissful-infra agent accept watchdog
+✓ Fix applied
+
+# Too noisy? Silence it.
+$ blissful-infra agent watch silences
+No active silences.
+
+$ blissful-infra agent watch start --silence "NullPointerException" --duration 30m
+✓ Silenced "NullPointerException" for 30 minutes
 ```
 
 ---
@@ -1189,6 +1285,9 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - [ ] Suggestion acceptance rate > 50% (after revision)
 - [ ] Mean time from assign to suggestion-ready < 2 minutes
 - [ ] Bug Fixer reads Phase 5 alert and suggests a correct fix
+- [ ] Watchdog detects a container error and prompts user within 10 seconds
+- [ ] Watchdog diagnosis identifies correct root cause for common errors (5xx, NPE, OOM)
+- [ ] Silence system correctly suppresses repeated alerts for the same error pattern
 
 ---
 
