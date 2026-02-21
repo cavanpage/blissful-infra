@@ -84,6 +84,12 @@ export function getRequiredPorts(config: ProjectConfig): { port: number; service
     ports.push({ port: 8090 + i, service: `AI Pipeline (${p.instance})` });
   });
 
+  // Agent service ports (one per instance)
+  const agentServices = config.plugins?.filter(p => p.type === "agent-service") || [];
+  agentServices.forEach((p, i) => {
+    ports.push({ port: 8095 + i, service: `Agent Service (${p.instance})` });
+  });
+
   // Database ports
   if (config.database === "postgres" || config.database === "postgres-redis") {
     ports.push({ port: 5432, service: "PostgreSQL" });

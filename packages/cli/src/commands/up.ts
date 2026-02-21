@@ -109,6 +109,14 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim(`  • ${label}: `) + chalk.cyan(`http://localhost:${port}`));
     });
 
+    const agentServicesOut = config.plugins?.filter(p => p.type === "agent-service") || [];
+    agentServicesOut.forEach((plugin, index) => {
+      const cfg = config.pluginConfigs?.[plugin.instance];
+      const port = cfg?.port ?? (8095 + index);
+      const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
+      console.log(chalk.dim(`  • ${label}: `) + chalk.cyan(`http://localhost:${port}`));
+    });
+
     console.log(chalk.dim("  • Dashboard:   ") + chalk.cyan("http://localhost:3002"));
 
     console.log();
@@ -282,6 +290,35 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
   });
 
+  // Agent service plugins
+  const agentServices = config.plugins?.filter(p => p.type === "agent-service") || [];
+  agentServices.forEach((plugin, index) => {
+    const cfg = config.pluginConfigs?.[plugin.instance];
+    const port = cfg?.port ?? (8095 + index);
+    services[plugin.instance] = {
+      build: {
+        context: `./${plugin.instance}`,
+        dockerfile: "Dockerfile",
+      },
+      container_name: `${config.name}-${plugin.instance}`,
+      ports: [`${port}:${port}`],
+      environment: {
+        PROJECT_NAME: config.name,
+        INSTANCE_NAME: plugin.instance,
+        API_PORT: String(port),
+        ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}",
+        AI_PROVIDER: "${AI_PROVIDER:-claude}",
+        AI_MODEL: "${AI_MODEL:-claude-sonnet-4-20250514}",
+        WORKSPACE_DIR: "/workspace",
+        STATE_DIR: "/data/agent-state",
+      },
+      volumes: [
+        ".:/workspace:rw",
+        `${config.name}-agent-state:/data/agent-state`,
+      ],
+    };
+  });
+
   // Dashboard service
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -303,6 +340,9 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
   const volumes: Record<string, string | null> = {};
   if (config.database === "postgres" || config.database === "postgres-redis") {
     volumes[`${config.name}-postgres-data`] = null;
+  }
+  if (agentServices.length > 0) {
+    volumes[`${config.name}-agent-state`] = null;
   }
 
   const compose: Record<string, unknown> = { services };
