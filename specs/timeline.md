@@ -281,6 +281,72 @@ Pipeline completed successfully!
 
 **Location:** `packages/cli/src/utils/metrics-storage.ts`, `packages/cli/src/utils/alerts.ts`, `packages/cli/src/utils/log-storage.ts`, `packages/cli/src/server/api.ts`, `packages/dashboard/src/App.tsx`
 
+### 3.6 Prometheus + Grafana (Opt-In Monitoring Stack)
+The custom metrics system (3.1-3.5) works as a zero-dependency default. This section adds an opt-in production-grade monitoring stack using Prometheus and Grafana, spun up as additional Docker containers alongside your app.
+
+**Why both?**
+- **Default (custom)** — no extra containers, instant startup, good enough for basic local dev
+- **Prometheus + Grafana** — industry-standard tooling, PromQL queries, persistent storage, pre-built dashboards, alerting rules, and a direct integration path for the Phase 7 watchdog agent
+
+**Opt-in via config:**
+```yaml
+# blissful-infra.yaml
+monitoring: prometheus   # "default" | "prometheus"
+```
+
+Or via CLI flag:
+```bash
+blissful-infra start my-app --monitoring prometheus
+```
+
+**What gets deployed:**
+```
+┌─────────────────────────────────────────────────┐
+│              Docker Compose                      │
+│                                                  │
+│  ┌──────────┐    scrape     ┌──────────────┐    │
+│  │  Spring   │◄─────────────│  Prometheus  │    │
+│  │  Boot     │  /actuator/  │  :9090       │    │
+│  │  :8080    │  prometheus  └──────┬───────┘    │
+│  └──────────┘                      │            │
+│                              datasource         │
+│                                    │            │
+│                              ┌─────▼────────┐   │
+│                              │   Grafana    │   │
+│                              │   :3001      │   │
+│                              └──────────────┘   │
+└─────────────────────────────────────────────────┘
+```
+
+**Prometheus setup:**
+- [ ] Prometheus container in docker-compose (opt-in)
+- [ ] Auto-generated `prometheus.yml` scrape config targeting app's `/actuator/prometheus`
+- [ ] Multi-target scraping (all services that expose metrics)
+- [ ] Retention config (default 15d for local dev)
+- [ ] Port: 9090
+
+**Grafana setup:**
+- [ ] Grafana container with Prometheus datasource pre-configured
+- [ ] Pre-built dashboards (auto-provisioned via `/etc/grafana/provisioning/`):
+  - Service Overview — request rate, error rate, response time (p50/p95/p99)
+  - JVM Metrics — heap usage, GC pauses, thread count
+  - Infrastructure — container CPU, memory, network I/O
+  - Kafka — consumer lag, throughput, partition status
+- [ ] Anonymous access enabled (no login for local dev)
+- [ ] Port: 3001
+
+**CLI integration:**
+- [ ] `blissful-infra start --monitoring prometheus` — includes Prometheus + Grafana in docker-compose
+- [ ] `blissful-infra dashboard` — opens Grafana (port 3001) when monitoring=prometheus, otherwise opens custom dashboard
+- [ ] Console output shows Prometheus and Grafana URLs on startup
+
+**Agent integration (Phase 7):**
+- [ ] `query_prometheus` read tool for watchdog agent — run PromQL queries to detect anomalies
+- [ ] Watchdog can query error rate spikes, latency regressions, resource exhaustion via PromQL
+- [ ] Grafana alert rules as an additional trigger source for watchdog notifications
+
+**Location:** `packages/cli/templates/prometheus/`, `packages/cli/templates/grafana/`
+
 ### Phase 3 Definition of Done
 ```
 $ blissful-infra dashboard
@@ -1059,6 +1125,7 @@ Two phases of tools, separated by the human approval boundary.
 - [x] `read_file`, `list_files`, `search_in_files` — codebase analysis
 - [x] `git_status`, `git_diff` — current state awareness
 - [ ] `query_logs`, `query_metrics` — Phase 3 observability data
+- [ ] `query_prometheus` — PromQL queries against Prometheus (when monitoring=prometheus)
 - [ ] `search_incidents`, `get_fix_suggestions` — Phase 5 knowledge base
 - [ ] `read_chaos_results`, `read_perf_results` — Phase 4 data
 
@@ -1264,6 +1331,8 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - [x] Metrics available within 30s of request
 - [x] Logs searchable across services
 - [x] Dashboard displays real-time metrics and health status
+- [ ] Prometheus scrapes app metrics within 15s of startup
+- [ ] Grafana dashboards load with pre-populated panels (no manual config)
 
 ### Phase 4 (Resilience)
 - [ ] Performance tests complete < 5 minutes
