@@ -810,91 +810,290 @@ Created PR #142: fix/bounded-greeting-cache
 
 ## Phase 7: Autonomy
 
-**Goal:** LangGraph-powered virtual employees that autonomously build features, fix bugs, and maintain your blissful-infra apps.
+**Goal:** Close the loop. Phases 1-6 gave blissful-infra eyes (observability), reflexes (resilience), and a brain (intelligence). Phase 7 gives it a voice — LangGraph-powered virtual employees that analyze your codebase and suggest changes for human review.
 
-### 7.1 LangGraph Agent Framework
-- [ ] LangGraph integration with tool-calling agents
-- [ ] Agent runtime as a blissful-infra service (Python, runs alongside project)
-- [ ] Configurable LLM backend (Claude, GPT-4, Ollama local models)
-- [ ] Agent memory and conversation persistence (checkpointing)
-- [ ] `blissful-infra agent hire <role>` command to spawn a virtual employee
+### The Product Thesis
 
-### 7.2 Virtual Employee Roles
-- [ ] **Feature Engineer** — Takes a task description, writes code, creates tests, opens PR
-- [ ] **Bug Fixer** — Monitors logs/alerts, triages issues, implements fixes
-- [ ] **Reviewer** — Reviews PRs, suggests improvements, checks for regressions
-- [ ] **SRE Bot** — Watches metrics, responds to alerts, runs chaos tests, tunes configs
-- [ ] **Docs Writer** — Generates/updates API docs, README, architecture diagrams
+blissful-infra already knows things that most teams don't act on fast enough:
 
-### 7.3 Tool Graph (LangGraph Nodes)
-- [ ] **Code tools** — Read/write files, search codebase, AST analysis
-- [ ] **Git tools** — Branch, commit, push, create PR, read diffs
-- [ ] **Test tools** — Run unit/integration tests, interpret results
-- [ ] **Build tools** — Trigger builds, read build logs, fix compilation errors
-- [ ] **Infra tools** — Docker compose, health checks, log queries, metrics queries
-- [ ] **Knowledge tools** — Query knowledge base, search similar incidents
+- **Phase 3** detects a memory spike at 14:32
+- **Phase 4** knows the service can't survive a Kafka outage
+- **Phase 5** identifies the root cause as an unbounded cache in `GreetingService.kt:47` with 94% confidence
 
-### 7.4 Task Workflow Engine
-- [ ] Task queue with priority and assignment to virtual employees
-- [ ] Multi-step execution plans with human-in-the-loop checkpoints
-- [ ] Automatic retry with different strategies on failure
-- [ ] Task handoff between agents (e.g., Feature Engineer → Reviewer)
-- [ ] Progress streaming to dashboard
+But today, that insight sits in a terminal output until a human reads it, context-switches, and manually writes the fix. Phase 7 eliminates that gap. When the system detects a problem, a virtual employee analyzes the codebase, drafts a fix with full diffs, and presents it for human review. The human decides whether to apply it — not the agent.
 
-### 7.5 Safety and Approval Gates
-- [ ] Human approval required before merging PRs
-- [ ] Dry-run mode for all destructive operations
-- [ ] Diff preview before any file write
-- [ ] Budget/token limits per agent per task
-- [ ] Audit log of all agent actions
+This is the **suggest-first model**: agents think, humans decide.
 
-### 7.6 Dashboard Integration
-- [ ] Virtual employee status panel (active agents, current tasks)
-- [ ] Task board (backlog, in progress, review, done)
-- [ ] Agent conversation viewer (see agent reasoning)
-- [ ] One-click approve/reject for agent PRs
-- [ ] Cost tracking (tokens used per task)
+### Why Suggest-First (Not Auto-PR)
 
-### 7.7 CLI Commands
-- [ ] `blissful-infra agent hire <role>` — Spawn a virtual employee
-- [ ] `blissful-infra agent fire <name>` — Stop a virtual employee
-- [ ] `blissful-infra agent list` — Show active virtual employees
-- [ ] `blissful-infra agent assign <name> <task>` — Assign a task
-- [ ] `blissful-infra agent status <name>` — Show agent progress
-- [ ] `blissful-infra agent logs <name>` — View agent decision log
+LLMs produce wrong code often enough that auto-committing and opening PRs creates noise, not value. A suggestion that's wrong costs nothing — a PR that's wrong wastes review time and erodes trust.
 
-**Location:** `packages/cli/src/agents/`, `packages/cli/src/commands/agent-hire.ts`
+The suggest-first model:
+- **No risk** — agent never writes to disk until human says "accept"
+- **No trust levels needed** — the safety IS the suggestion model
+- **Iterative** — human can say "change X" and agent revises before applying
+- **Higher acceptance rate** — humans shape the output before it lands
+
+### The Suggestion Lifecycle
+
+```
+assign → analyze → suggest → review → [revise]* → accept → apply + PR
+                                         ↑              │
+                                         └──────────────┘
+                                         (iterate until right)
+```
+
+1. **Assign** — human gives agent a task
+2. **Analyze** — agent reads codebase (read-only: `list_files`, `read_file`, `search_in_files`)
+3. **Suggest** — agent produces a plan + proposed diffs (stored in memory, not on disk)
+4. **Review** — human sees the full suggestion with file-by-file diffs in CLI
+5. **Revise** — human requests changes, agent updates the suggestion
+6. **Accept** — human approves, agent writes files, creates branch, opens PR
+
+### How Each Phase Feeds Suggestions
+
+| Phase | What it provides | How agents use it |
+|-------|-----------------|-------------------|
+| **Phase 1** (MVP) | Project structure, templates | Agents read conventions to follow when suggesting code |
+| **Phase 2** (Pipeline) | Jenkins, CI/CD | Agent can suggest build config changes, Jenkinsfile tweaks |
+| **Phase 3** (Observability) | Metrics, logs, health checks | Agent reads error logs and metrics to inform suggestions |
+| **Phase 4** (Resilience) | Chaos tests, perf baselines | Agent reads chaos results to suggest resilience fixes |
+| **Phase 5** (Intelligence) | Knowledge base, root cause analysis | Agent queries similar incidents to suggest known fixes |
+| **Phase 6** (Scale) | Multi-language templates | Agents suggest code in any template language |
+
+### Value Propositions
+
+**1. Expert Second Opinion on Demand**
+When Phase 5 detects an OOM with 94% confidence, the agent reads the codebase, drafts a fix, and shows you the diff. You decide if it's right.
+
+```
+$ blissful-infra agent status bob
+Suggestion Ready: Fix OOMKilled in GreetingService
+
+$ blissful-infra agent review bob
+Plan: Add bounded cache with LRU eviction
+Knowledge base: 2 similar incidents, both fixed with cache bounds
+
+--- a/src/main/kotlin/com/blissful/service/GreetingService.kt
++++ b/src/main/kotlin/com/blissful/service/GreetingService.kt
+@@ -45,7 +45,7 @@
+-    private val cache = mutableMapOf<String, Greeting>()
++    private val cache = LinkedHashMap<String, Greeting>(100, 0.75f, true)
+
+$ blissful-infra agent accept bob
+✓ Files written, branch created: fix/bounded-greeting-cache
+✓ PR opened: #148
+```
+
+**2. Feature Scaffolding with Human Polish**
+Agent drafts the boilerplate — CRUD endpoints, data models, tests — and you refine before applying.
+
+```
+$ blissful-infra agent assign alice "Add a /users endpoint with pagination"
+$ blissful-infra agent review alice
+# Shows: 4 new files, 14 test cases, full diffs
+
+$ blissful-infra agent revise alice "Use UUID instead of auto-increment IDs"
+# Agent updates suggestion...
+
+$ blissful-infra agent review alice
+# Shows: updated diffs with UUID
+
+$ blissful-infra agent accept alice
+✓ Files written, branch created: feat/add-users-endpoint
+✓ PR opened: #47
+```
+
+**3. Resilience Gap Closure**
+After a chaos test fails, agent suggests the fix. You review, iterate, accept.
+
+```
+Chaos: kafka-down scenario FAILED
+$ blissful-infra agent assign sre "Fix kafka-down chaos failure"
+$ blissful-infra agent review sre
+Plan: Add @CircuitBreaker annotation on KafkaProducer
+# Shows diff...
+
+$ blissful-infra agent accept sre
+✓ Applied. Run 'blissful-infra chaos --scenario kafka-down' to verify.
+```
+
+**4. Knowledge Amplification**
+Every accepted suggestion feeds back into the knowledge base (Phase 5). Rejected suggestions are tracked too — the system learns what doesn't work.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                 blissful-infra CLI               │
+│  agent assign/review/revise/accept/reject        │
+└──────────────────┬──────────────────────────────┘
+                   │ HTTP (localhost:8095)
+┌──────────────────▼──────────────────────────────┐
+│              Agent Service (Python)              │
+│  FastAPI + LangGraph                             │
+│                                                  │
+│  ┌─────────────────────────────────────────┐    │
+│  │  Phase 1: READ-ONLY analysis            │    │
+│  │  list_files, read_file, search_in_files │    │
+│  │  git_status, git_diff                   │    │
+│  └────────────────┬────────────────────────┘    │
+│                   ▼                              │
+│  ┌─────────────────────────────────────────┐    │
+│  │  Phase 2: SUGGESTION (in-memory diffs)  │    │
+│  │  Proposed file changes stored in state  │    │
+│  │  Human reviews via CLI or dashboard     │    │
+│  └────────────────┬────────────────────────┘    │
+│                   ▼ (only after human "accept")  │
+│  ┌─────────────────────────────────────────┐    │
+│  │  Phase 3: APPLY                         │    │
+│  │  write_file, git_create_branch,         │    │
+│  │  git_add_and_commit, create_pr          │    │
+│  └─────────────────────────────────────────┘    │
+└──────────────────┬──────────────────────────────┘
+                   │ mounted volume (/workspace)
+┌──────────────────▼──────────────────────────────┐
+│                Your Project                      │
+│  source code, tests, configs, git history        │
+└─────────────────────────────────────────────────┘
+```
+
+### 7.1 LangGraph Agent Framework ✅
+- [x] LangGraph integration with tool-calling agents
+- [x] Agent runtime as a blissful-infra plugin service (Python, runs alongside project)
+- [x] Configurable LLM backend (Claude, Ollama local models)
+- [x] Agent state persistence (JSON file, upgradeable to SQLite)
+- [x] CLI commands: `agent hire`, `agent fire`, `agent list`, `agent assign`, `agent status`
+- [x] Feature Engineer role with read-only analysis tools
+
+**Location:** `packages/cli/templates/agent-service/`, `packages/cli/src/commands/agent.ts`
+
+### 7.2 Suggestion Engine
+The core of the suggest-first model. Agent produces proposed changes without touching the filesystem.
+
+- [ ] **Suggestion state** — in-memory proposed diffs stored in agent state (plan text + file changes)
+- [ ] **`agent review <name>`** — CLI renders the suggestion: plan explanation + file-by-file unified diffs
+- [ ] **`agent revise <name> "<feedback>"`** — agent re-analyzes with human feedback, updates suggestion
+- [ ] **`agent accept <name>`** — writes proposed files to disk, creates branch, commits, opens PR
+- [ ] **`agent reject <name>`** — discards suggestion, resets agent to idle
+- [ ] **Revision history** — track each revision of a suggestion (v1 → v2 → v3)
+
+### 7.3 Virtual Employee Roles
+Each role is a LangGraph StateGraph with a specialized system prompt and read-only tool set. Write tools only activate on accept.
+
+| Role | Trigger | Reads | Suggests |
+|------|---------|-------|----------|
+| **Feature Engineer** | Manual task | Code structure, conventions, tests | New files + test code |
+| **Bug Fixer** | Alert or manual | Logs, knowledge base, source code | Fix diffs |
+| **SRE Bot** | Chaos failure or manual | Chaos results, metrics, infra config | Config/code changes |
+| **Docs Writer** | Manual | Source code, existing docs | Doc updates |
+
+- [x] Feature Engineer (MVP)
+- [ ] Bug Fixer — reads Phase 5 alerts and knowledge base
+- [ ] SRE Bot — reads Phase 3 metrics and Phase 4 chaos results
+- [ ] Docs Writer — scans code for undocumented endpoints/models
+
+### 7.4 Tool Graph
+Two phases of tools, separated by the human approval boundary.
+
+**Read tools (always available):**
+- [x] `read_file`, `list_files`, `search_in_files` — codebase analysis
+- [x] `git_status`, `git_diff` — current state awareness
+- [ ] `query_logs`, `query_metrics` — Phase 3 observability data
+- [ ] `search_incidents`, `get_fix_suggestions` — Phase 5 knowledge base
+- [ ] `read_chaos_results`, `read_perf_results` — Phase 4 data
+
+**Write tools (only after human accept):**
+- [x] `write_file` — apply proposed changes to disk
+- [x] `git_create_branch`, `git_add_and_commit` — create branch and commit
+- [ ] `create_pr` — open PR on GitHub
+- [ ] `run_tests` — verify changes after apply
+
+### 7.5 Dashboard Integration
+- [ ] Suggestion viewer — see proposed diffs in the browser with syntax highlighting
+- [ ] Accept/reject/revise buttons — one-click actions from dashboard
+- [ ] Agent activity feed — recent suggestions across all agents
+- [ ] Acceptance rate tracking — which agents produce useful suggestions
+
+### 7.6 CLI Commands
+- [x] `blissful-infra agent chat` — Interactive AI assistant (legacy, now a subcommand)
+- [x] `blissful-infra agent hire <role> --name <n>` — Spawn a virtual employee
+- [x] `blissful-infra agent fire <name>` — Stop a virtual employee
+- [x] `blissful-infra agent list` — Show active virtual employees
+- [x] `blissful-infra agent assign <name> <task>` — Assign a task
+- [x] `blissful-infra agent status <name>` — Show agent progress
+- [ ] `blissful-infra agent review <name>` — View suggestion with diffs
+- [ ] `blissful-infra agent revise <name> "<feedback>"` — Request changes to suggestion
+- [ ] `blissful-infra agent accept <name>` — Apply suggestion, create branch + PR
+- [ ] `blissful-infra agent reject <name>` — Discard suggestion
+
+**Location:** `packages/cli/templates/agent-service/`, `packages/cli/src/commands/agent.ts`
+
+### Competitive Differentiation
+
+Most AI coding tools (Copilot, Cursor, Devin) either autocomplete at the cursor or autonomously write code and hope it's right. blissful-infra takes a different approach: **suggest, don't commit.** The agent has deep infrastructure context (metrics, chaos results, incident history, deployment pipeline) that editor-level tools can never have — and it presents that context as reviewable suggestions rather than fait accompli PRs.
+
+This is the difference between "AI that writes code and hopes for the best" and "AI that drafts informed suggestions for humans to approve."
 
 ### Phase 7 Definition of Done
 ```
+$ blissful-infra start my-app --plugins agent-service
+✓ Agent service running on http://localhost:8095
+
 $ blissful-infra agent hire feature-engineer --name alice
 ✓ Virtual employee "alice" (Feature Engineer) is online
 
 $ blissful-infra agent assign alice "Add a /users endpoint with CRUD operations"
 ✓ Task assigned to alice
-
-# Alice works autonomously:
-#   1. Reads existing code structure
-#   2. Creates UserController.kt, UserService.kt, UserRepository.kt
-#   3. Writes unit tests
-#   4. Runs tests locally (all pass)
-#   5. Creates branch feat/add-users-endpoint
-#   6. Opens PR with description
+# Alice analyzes codebase (read-only)...
 
 $ blissful-infra agent status alice
 Agent: alice (Feature Engineer)
-Status: Awaiting Review
+Status: Suggestion Ready
 Current Task: Add /users endpoint with CRUD operations
 
 Progress:
   ✓ Analyzed codebase (12 files read)
-  ✓ Created implementation plan (4 files)
-  ✓ Wrote code (UserController, UserService, UserRepository, UserDTO)
-  ✓ Wrote tests (3 test files, 14 test cases)
-  ✓ All tests passing
-  ✓ Opened PR #47: feat/add-users-endpoint
+  ✓ Identified patterns (existing controllers, test style)
+  ✓ Drafted suggestion (4 new files, 2 modified)
 
-→ Waiting for human approval to merge
+→ Run 'agent review alice' to see suggestion
+
+$ blissful-infra agent review alice
+Suggestion v1: Add /users endpoint with CRUD operations
+
+Plan:
+  Create UserController.kt following existing HelloController pattern
+  Create UserService.kt with CRUD methods
+  Create UserRepository.kt (Spring Data JPA)
+  Create UserDTO.kt for request/response
+  Add 14 test cases following existing test conventions
+
+--- /dev/null → src/main/kotlin/.../controller/UserController.kt
++++ (new file, 45 lines)
++ @RestController
++ @RequestMapping("/users")
++ class UserController(private val userService: UserService) {
++ ...
+
+--- /dev/null → src/test/.../controller/UserControllerTest.kt
++++ (new file, 120 lines)
++ ...
+
+[accept] [revise] [reject]
+
+$ blissful-infra agent revise alice "Use UUID for user IDs, not auto-increment"
+✓ Revising suggestion...
+
+$ blissful-infra agent review alice
+Suggestion v2: (updated with UUID)
+# Shows updated diffs...
+
+$ blissful-infra agent accept alice
+✓ 4 files written
+✓ Branch created: feat/add-users-endpoint
+✓ Committed: "Add /users endpoint with CRUD operations"
+✓ PR opened: #47
 ```
 
 ---
@@ -902,24 +1101,29 @@ Progress:
 ## Dependency Graph
 
 ```
-Phase 1 (MVP)
+Phase 1 (MVP) ─── project structure, templates, Docker
     │
     ├──────────────────────┐
     ▼                      ▼
 Phase 2 (Pipeline)    Phase 3 (Observability)
+    CI/CD, builds          metrics, logs, health
     │                      │
     └──────────┬───────────┘
                ▼
          Phase 4 (Resilience)
+               chaos, perf, canary
                │
                ▼
          Phase 5 (Intelligence)
+               knowledge base, root cause
                │
                ▼
          Phase 6 (Scale)
+               multi-lang, cloud, teams
                │
                ▼
-         Phase 7 (Autonomy)
+         Phase 7 (Autonomy) ◄── consumes ALL previous phases
+               virtual employees that ACT on what Phases 1-6 KNOW
 ```
 
 **Notes:**
@@ -927,7 +1131,13 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - Phase 4 requires both Pipeline and Observability
 - Phase 5 builds on all previous phases
 - Phase 6 is additive and can be done incrementally
-- Phase 7 builds on Phase 5's knowledge base and Phase 6's templates for multi-language agent support
+- Phase 7 is the capstone — it consumes every previous phase:
+  - Phase 1: agents follow project conventions when writing code
+  - Phase 2: agents trigger builds and verify tests
+  - Phase 3: SRE Bot watches metrics, Bug Fixer reads logs
+  - Phase 4: SRE Bot runs chaos tests after fixes
+  - Phase 5: Bug Fixer queries knowledge base for similar incidents
+  - Phase 6: agents work across any language template
 
 ---
 
@@ -973,9 +1183,12 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - [ ] Cloud deployment verified on 1+ provider
 
 ### Phase 7 (Autonomy)
-- [ ] Virtual employee completes a feature task end-to-end (code + tests + PR)
-- [ ] Bug fixer resolves a real alert without human intervention
-- [ ] Agent actions pass human review > 70% of the time
+- [ ] Agent produces a reviewable suggestion with correct diffs for a feature task
+- [ ] Human can revise a suggestion and agent updates it correctly
+- [ ] Accepted suggestion writes files, creates branch, opens PR successfully
+- [ ] Suggestion acceptance rate > 50% (after revision)
+- [ ] Mean time from assign to suggestion-ready < 2 minutes
+- [ ] Bug Fixer reads Phase 5 alert and suggests a correct fix
 
 ---
 
