@@ -1217,6 +1217,16 @@ function App() {
             <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">orchestrator</span>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href="http://localhost:3001"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors text-orange-400"
+              title="Open Grafana Dashboards"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Grafana
+            </a>
             <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg transition-colors"

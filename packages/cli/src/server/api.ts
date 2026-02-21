@@ -1163,6 +1163,14 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
     healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
   });
 
+  // Prometheus + Grafana health checks
+  if (config?.monitoring === "prometheus") {
+    const promUrl = DOCKER_MODE ? "http://prometheus:9090" : "http://localhost:9090";
+    healthChecks.push({ name: "prometheus", url: `${promUrl}/-/healthy`, port: 9090 });
+    const grafUrl = DOCKER_MODE ? "http://grafana:3000" : "http://localhost:3001";
+    healthChecks.push({ name: "grafana", url: `${grafUrl}/api/health`, port: 3001 });
+  }
+
   // Check each service
   for (const check of healthChecks) {
     const startTime = Date.now();

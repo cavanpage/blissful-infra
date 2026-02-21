@@ -117,6 +117,10 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim(`  • ${label}: `) + chalk.cyan(`http://localhost:${port}`));
     });
 
+    if (config.monitoring === "prometheus") {
+      console.log(chalk.dim("  • Prometheus:  ") + chalk.cyan("http://localhost:9090"));
+      console.log(chalk.dim("  • Grafana:     ") + chalk.cyan("http://localhost:3001"));
+    }
     console.log(chalk.dim("  • Dashboard:   ") + chalk.cyan("http://localhost:3002"));
 
     console.log();
@@ -319,6 +323,55 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
   });
 
+  // Prometheus + Grafana (opt-in monitoring stack)
+  if (config.monitoring === "prometheus") {
+    services.prometheus = {
+      image: "prom/prometheus:v2.51.0",
+      container_name: `${config.name}-prometheus`,
+      ports: ["9090:9090"],
+      volumes: [
+        "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+        `${config.name}-prometheus-data:/prometheus`,
+      ],
+      command: [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.retention.time=15d",
+        "--web.enable-lifecycle",
+      ],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 3,
+      },
+    };
+
+    services.grafana = {
+      image: "grafana/grafana:11.0.0",
+      container_name: `${config.name}-grafana`,
+      ports: ["3001:3000"],
+      environment: {
+        GF_AUTH_ANONYMOUS_ENABLED: "true",
+        GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin",
+        GF_AUTH_DISABLE_LOGIN_FORM: "true",
+      },
+      volumes: [
+        "./grafana/provisioning:/etc/grafana/provisioning:ro",
+        "./grafana/dashboards:/var/lib/grafana/dashboards:ro",
+        `${config.name}-grafana-data:/var/lib/grafana`,
+      ],
+      depends_on: {
+        prometheus: { condition: "service_healthy" },
+      },
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 3,
+      },
+    };
+  }
+
   // Dashboard service
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -343,6 +396,10 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
   }
   if (agentServices.length > 0) {
     volumes[`${config.name}-agent-state`] = null;
+  }
+  if (config.monitoring === "prometheus") {
+    volumes[`${config.name}-prometheus-data`] = null;
+    volumes[`${config.name}-grafana-data`] = null;
   }
 
   const compose: Record<string, unknown> = { services };
