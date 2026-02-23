@@ -130,7 +130,7 @@ interface ProjectStatus {
 const DOCKER_MODE = process.env.DOCKER_MODE === "true";
 
 const SERVICE_URLS: Record<string, string> = DOCKER_MODE
-  ? { backend: "http://app:8080", frontend: "http://frontend:80" }
+  ? { backend: "http://backend:8080", frontend: "http://frontend:80" }
   : { backend: "http://localhost:8080", frontend: "http://localhost:3000" };
 
 const MIME_TYPES: Record<string, string> = {
@@ -1592,24 +1592,28 @@ async function getPipelineStatus(
     }
   }
 
-  const jenkinsHost = DOCKER_MODE ? "host.docker.internal" : "localhost";
-  const jenkinsUrl = hasJenkinsfile ? `http://${jenkinsHost}:8081/job/${projectName}` : undefined;
+  const jenkinsApiHost = DOCKER_MODE ? "host.docker.internal" : "localhost";
+  // Always use localhost for browser-facing links
+  const jenkinsBrowserHost = "localhost";
 
   // Try to fetch last build from Jenkins API
   let lastRun: PipelineStatus["lastRun"];
+  let resolvedJobPath = `job/${projectName}`; // default, may be updated below
   if (hasJenkinsfile) {
     try {
       const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
 
       // Try folder path first, then root
-      let jobApiUrl = `http://${jenkinsHost}:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
+      let jobApiUrl = `http://${jenkinsApiHost}:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
       let resp = await fetch(jobApiUrl, {
         headers: { Authorization: authHeader },
         signal: AbortSignal.timeout(3000),
       });
 
-      if (!resp.ok) {
-        jobApiUrl = `http://${jenkinsHost}:8081/job/${projectName}/lastBuild/api/json`;
+      if (resp.ok) {
+        resolvedJobPath = `job/blissful-projects/job/${projectName}`;
+      } else {
+        jobApiUrl = `http://${jenkinsApiHost}:8081/job/${projectName}/lastBuild/api/json`;
         resp = await fetch(jobApiUrl, {
           headers: { Authorization: authHeader },
           signal: AbortSignal.timeout(3000),
@@ -1671,6 +1675,10 @@ async function getPipelineStatus(
       // Jenkins not reachable — return without lastRun
     }
   }
+
+  const jenkinsUrl = hasJenkinsfile
+    ? `http://${jenkinsBrowserHost}:8081/${resolvedJobPath}`
+    : undefined;
 
   return { lastRun, jenkinsUrl };
 }

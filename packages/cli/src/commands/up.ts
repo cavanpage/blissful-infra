@@ -206,12 +206,12 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
 
   // Backend application service (for backend or fullstack templates)
   if (!isFrontendOnly) {
-    services.app = {
+    services.backend = {
       build: {
         context: isFullstack ? "./backend" : ".",
         dockerfile: "Dockerfile",
       },
-      container_name: `${config.name}-app`,
+      container_name: `${config.name}-backend`,
       ports: ["8080:8080"],
       environment: {
         KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
@@ -246,14 +246,14 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       container_name: `${config.name}-frontend`,
       ports: ["3000:80"],
       ...(isFullstack ? {
-        depends_on: ["app"],
+        depends_on: ["backend"],
       } : {}),
     };
   }
 
   // Nginx reverse proxy (for projects with a backend)
   if (!isFrontendOnly) {
-    const dependsOn = isFullstack ? ["app", "frontend"] : ["app"];
+    const dependsOn = isFullstack ? ["backend", "frontend"] : ["backend"];
     services.nginx = {
       image: "nginx:alpine",
       container_name: `${config.name}-nginx`,
@@ -263,7 +263,7 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
 
     // Generate nginx.conf
-    await generateNginxConf(config, projectDir, isFullstack);
+    await generateNginxConf(projectDir, isFullstack);
   }
 
   // AI Pipeline plugins
@@ -413,7 +413,6 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
 }
 
 async function generateNginxConf(
-  config: ProjectConfig,
   projectDir: string,
   isFullstack: boolean
 ): Promise<void> {
@@ -423,11 +422,11 @@ async function generateNginxConf(
   ];
 
   const locationBlocks = backendPaths
-    .map((p) => `    location ${p} {\n        proxy_pass http://app:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
+    .map((p) => `    location ${p} {\n        proxy_pass http://backend:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
     .join("\n\n");
 
   const wsBlock = `    location /ws/ {
-        proxy_pass http://app:8080;
+        proxy_pass http://backend:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -443,7 +442,7 @@ async function generateNginxConf(
     }`;
   } else {
     defaultLocation = `    location / {
-        proxy_pass http://app:8080;
+        proxy_pass http://backend:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -12,13 +12,13 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_memory_used_bytes{area=\"heap\"}",
           "legendFormat": "Used ({{id}})",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_memory_committed_bytes{area=\"heap\"}",
           "legendFormat": "Committed ({{id}})",
           "refId": "B"
@@ -38,7 +38,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "rate(jvm_gc_pause_seconds_sum[1m]) / rate(jvm_gc_pause_seconds_count[1m])",
           "legendFormat": "Avg GC pause ({{cause}})",
           "refId": "A"
@@ -58,19 +58,19 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_threads_live_threads",
           "legendFormat": "Live threads",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_threads_daemon_threads",
           "legendFormat": "Daemon threads",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_threads_peak_threads",
           "legendFormat": "Peak threads",
           "refId": "C"
@@ -90,7 +90,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_classes_loaded_classes",
           "legendFormat": "Loaded classes",
           "refId": "A"
@@ -107,18 +107,7 @@
   ],
   "schemaVersion": 39,
   "tags": ["blissful-infra"],
-  "templating": {
-    "list": [
-      {
-        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
-        "hide": 0,
-        "includeAll": false,
-        "name": "DS_PROMETHEUS",
-        "query": "prometheus",
-        "type": "datasource"
-      }
-    ]
-  },
+  "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
   "title": "JVM Metrics",
   "uid": "blissful-jvm-metrics"

@@ -12,13 +12,13 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "process_cpu_usage * 100",
           "legendFormat": "Process CPU %",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "system_cpu_usage * 100",
           "legendFormat": "System CPU %",
           "refId": "B"
@@ -40,19 +40,19 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_memory_used_bytes{area=\"heap\"}",
           "legendFormat": "Heap used",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_memory_used_bytes{area=\"nonheap\"}",
           "legendFormat": "Non-heap used",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "jvm_memory_max_bytes{area=\"heap\"}",
           "legendFormat": "Heap max",
           "refId": "C"
@@ -72,7 +72,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "disk_free_bytes / disk_total_bytes * 100",
           "legendFormat": "Free %",
           "refId": "A"
@@ -101,13 +101,13 @@
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "process_files_open_files",
           "legendFormat": "Open FDs",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "process_files_max_files",
           "legendFormat": "Max FDs",
           "refId": "B"
@@ -127,7 +127,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "blissful-prometheus" },
           "expr": "process_uptime_seconds",
           "legendFormat": "Uptime",
           "refId": "A"
@@ -149,18 +149,7 @@
   ],
   "schemaVersion": 39,
   "tags": ["blissful-infra"],
-  "templating": {
-    "list": [
-      {
-        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
-        "hide": 0,
-        "includeAll": false,
-        "name": "DS_PROMETHEUS",
-        "query": "prometheus",
-        "type": "datasource"
-      }
-    ]
-  },
+  "templating": { "list": [] },
   "time": { "from": "now-15m", "to": "now" },
   "title": "Infrastructure",
   "uid": "blissful-infrastructure"

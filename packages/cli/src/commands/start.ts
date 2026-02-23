@@ -136,12 +136,12 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   }
 
   // Backend app
-  services.app = {
+  services.backend = {
     build: {
       context: "./backend",
       dockerfile: "Dockerfile",
     },
-    container_name: `${name}-app`,
+    container_name: `${name}-backend`,
     ports: ["8080:8080"],
     environment: {
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
@@ -171,7 +171,7 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     },
     container_name: `${name}-frontend`,
     ports: ["3000:80"],
-    depends_on: ["app"],
+    depends_on: ["backend"],
   };
 
   // Nginx reverse proxy
@@ -180,7 +180,7 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     container_name: `${name}-nginx`,
     ports: ["80:80"],
     volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"],
-    depends_on: ["app", "frontend"],
+    depends_on: ["backend", "frontend"],
   };
 
   // Generate nginx.conf
@@ -378,11 +378,11 @@ async function generateNginxConf(projectDir: string): Promise<void> {
   ];
 
   const locationBlocks = backendPaths
-    .map((p) => `    location ${p} {\n        proxy_pass http://app:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
+    .map((p) => `    location ${p} {\n        proxy_pass http://backend:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
     .join("\n\n");
 
   const wsBlock = `    location /ws/ {
-        proxy_pass http://app:8080;
+        proxy_pass http://backend:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
