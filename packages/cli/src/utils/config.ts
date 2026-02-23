@@ -63,6 +63,8 @@ export interface ProjectConfig {
   pipeline?: PipelineConfig;
   // Phase 4 additions
   canary?: CanaryConfig;
+  // Phase 3.6 monitoring
+  monitoring?: "default" | "prometheus";
   // Plugins
   plugins?: PluginInstance[];
   pluginConfigs?: Record<string, PluginConfig>;
@@ -150,6 +152,7 @@ function parseYaml(content: string): ProjectConfig {
     frontend: config.frontend,
     database: config.database || "none",
     deployTarget: config.deploy_target || "local-only",
+    monitoring: (config.monitoring === "default" ? "default" : "prometheus") as "default" | "prometheus",
     plugins: config.plugins ? parsePluginSpecs(config.plugins.split(",").map(p => p.trim()).filter(Boolean)) : undefined,
     pluginConfigs: parsePluginConfigs(content),
   };

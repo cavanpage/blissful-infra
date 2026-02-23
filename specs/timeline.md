@@ -281,22 +281,12 @@ Pipeline completed successfully!
 
 **Location:** `packages/cli/src/utils/metrics-storage.ts`, `packages/cli/src/utils/alerts.ts`, `packages/cli/src/utils/log-storage.ts`, `packages/cli/src/server/api.ts`, `packages/dashboard/src/App.tsx`
 
-### 3.6 Prometheus + Grafana (Opt-In Monitoring Stack)
-The custom metrics system (3.1-3.5) works as a zero-dependency default. This section adds an opt-in production-grade monitoring stack using Prometheus and Grafana, spun up as additional Docker containers alongside your app.
+### 3.6 Prometheus + Grafana (Default Monitoring Stack) ✅
+Prometheus + Grafana ships by default with every project. Industry-standard tooling with PromQL queries, persistent storage, pre-built dashboards, and a direct integration path for the Phase 7 watchdog agent. Linked from the main blissful-infra dashboard header.
 
-**Why both?**
-- **Default (custom)** — no extra containers, instant startup, good enough for basic local dev
-- **Prometheus + Grafana** — industry-standard tooling, PromQL queries, persistent storage, pre-built dashboards, alerting rules, and a direct integration path for the Phase 7 watchdog agent
-
-**Opt-in via config:**
-```yaml
-# blissful-infra.yaml
-monitoring: prometheus   # "default" | "prometheus"
-```
-
-Or via CLI flag:
+**Opt-out via CLI flag:**
 ```bash
-blissful-infra start my-app --monitoring prometheus
+blissful-infra start my-app --no-monitoring   # disable Prometheus + Grafana
 ```
 
 **What gets deployed:**

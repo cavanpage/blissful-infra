@@ -117,6 +117,10 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim(`  • ${label}: `) + chalk.cyan(`http://localhost:${port}`));
     });
 
+    if (config.monitoring === "prometheus") {
+      console.log(chalk.dim("  • Prometheus:  ") + chalk.cyan("http://localhost:9090"));
+      console.log(chalk.dim("  • Grafana:     ") + chalk.cyan("http://localhost:3001"));
+    }
     console.log(chalk.dim("  • Dashboard:   ") + chalk.cyan("http://localhost:3002"));
 
     console.log();
@@ -202,12 +206,12 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
 
   // Backend application service (for backend or fullstack templates)
   if (!isFrontendOnly) {
-    services.app = {
+    services.backend = {
       build: {
         context: isFullstack ? "./backend" : ".",
         dockerfile: "Dockerfile",
       },
-      container_name: `${config.name}-app`,
+      container_name: `${config.name}-backend`,
       ports: ["8080:8080"],
       environment: {
         KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
@@ -242,14 +246,14 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       container_name: `${config.name}-frontend`,
       ports: ["3000:80"],
       ...(isFullstack ? {
-        depends_on: ["app"],
+        depends_on: ["backend"],
       } : {}),
     };
   }
 
   // Nginx reverse proxy (for projects with a backend)
   if (!isFrontendOnly) {
-    const dependsOn = isFullstack ? ["app", "frontend"] : ["app"];
+    const dependsOn = isFullstack ? ["backend", "frontend"] : ["backend"];
     services.nginx = {
       image: "nginx:alpine",
       container_name: `${config.name}-nginx`,
@@ -259,7 +263,7 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
 
     // Generate nginx.conf
-    await generateNginxConf(config, projectDir, isFullstack);
+    await generateNginxConf(projectDir, isFullstack);
   }
 
   // AI Pipeline plugins
@@ -319,6 +323,55 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
   });
 
+  // Prometheus + Grafana (opt-in monitoring stack)
+  if (config.monitoring === "prometheus") {
+    services.prometheus = {
+      image: "prom/prometheus:v2.51.0",
+      container_name: `${config.name}-prometheus`,
+      ports: ["9090:9090"],
+      volumes: [
+        "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+        `${config.name}-prometheus-data:/prometheus`,
+      ],
+      command: [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.retention.time=15d",
+        "--web.enable-lifecycle",
+      ],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 3,
+      },
+    };
+
+    services.grafana = {
+      image: "grafana/grafana:11.0.0",
+      container_name: `${config.name}-grafana`,
+      ports: ["3001:3000"],
+      environment: {
+        GF_AUTH_ANONYMOUS_ENABLED: "true",
+        GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin",
+        GF_AUTH_DISABLE_LOGIN_FORM: "true",
+      },
+      volumes: [
+        "./grafana/provisioning:/etc/grafana/provisioning:ro",
+        "./grafana/dashboards:/var/lib/grafana/dashboards:ro",
+        `${config.name}-grafana-data:/var/lib/grafana`,
+      ],
+      depends_on: {
+        prometheus: { condition: "service_healthy" },
+      },
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 3,
+      },
+    };
+  }
+
   // Dashboard service
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -344,6 +397,10 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
   if (agentServices.length > 0) {
     volumes[`${config.name}-agent-state`] = null;
   }
+  if (config.monitoring === "prometheus") {
+    volumes[`${config.name}-prometheus-data`] = null;
+    volumes[`${config.name}-grafana-data`] = null;
+  }
 
   const compose: Record<string, unknown> = { services };
   if (Object.keys(volumes).length > 0) {
@@ -356,7 +413,6 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
 }
 
 async function generateNginxConf(
-  config: ProjectConfig,
   projectDir: string,
   isFullstack: boolean
 ): Promise<void> {
@@ -366,11 +422,11 @@ async function generateNginxConf(
   ];
 
   const locationBlocks = backendPaths
-    .map((p) => `    location ${p} {\n        proxy_pass http://app:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
+    .map((p) => `    location ${p} {\n        proxy_pass http://backend:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
     .join("\n\n");
 
   const wsBlock = `    location /ws/ {
-        proxy_pass http://app:8080;
+        proxy_pass http://backend:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -386,7 +442,7 @@ async function generateNginxConf(
     }`;
   } else {
     defaultLocation = `    location / {
-        proxy_pass http://app:8080;
+        proxy_pass http://backend:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

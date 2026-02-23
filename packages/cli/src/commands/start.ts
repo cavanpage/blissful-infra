@@ -41,6 +41,7 @@ interface StartOptions {
   database?: string;
   link?: boolean;
   plugins?: string;
+  monitoring?: boolean;
 }
 
 const DEFAULTS = {
@@ -68,7 +69,7 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: PluginInstance[] = []): Promise<void> {
+async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: PluginInstance[] = [], monitoring = "default"): Promise<void> {
   const services: Record<string, unknown> = {};
 
   // Kafka service
@@ -135,12 +136,12 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   }
 
   // Backend app
-  services.app = {
+  services.backend = {
     build: {
       context: "./backend",
       dockerfile: "Dockerfile",
     },
-    container_name: `${name}-app`,
+    container_name: `${name}-backend`,
     ports: ["8080:8080"],
     environment: {
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
@@ -170,7 +171,7 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     },
     container_name: `${name}-frontend`,
     ports: ["3000:80"],
-    depends_on: ["app"],
+    depends_on: ["backend"],
   };
 
   // Nginx reverse proxy
@@ -179,7 +180,7 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     container_name: `${name}-nginx`,
     ports: ["80:80"],
     volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"],
-    depends_on: ["app", "frontend"],
+    depends_on: ["backend", "frontend"],
   };
 
   // Generate nginx.conf
@@ -240,6 +241,55 @@ async function generateDockerCompose(projectDir: string, name: string, database:
     };
   });
 
+  // Prometheus + Grafana (opt-in monitoring stack)
+  if (monitoring === "prometheus") {
+    services.prometheus = {
+      image: "prom/prometheus:v2.51.0",
+      container_name: `${name}-prometheus`,
+      ports: ["9090:9090"],
+      volumes: [
+        "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+        `${name}-prometheus-data:/prometheus`,
+      ],
+      command: [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.retention.time=15d",
+        "--web.enable-lifecycle",
+      ],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 3,
+      },
+    };
+
+    services.grafana = {
+      image: "grafana/grafana:11.0.0",
+      container_name: `${name}-grafana`,
+      ports: ["3001:3000"],
+      environment: {
+        GF_AUTH_ANONYMOUS_ENABLED: "true",
+        GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin",
+        GF_AUTH_DISABLE_LOGIN_FORM: "true",
+      },
+      volumes: [
+        "./grafana/provisioning:/etc/grafana/provisioning:ro",
+        "./grafana/dashboards:/var/lib/grafana/dashboards:ro",
+        `${name}-grafana-data:/var/lib/grafana`,
+      ],
+      depends_on: {
+        prometheus: { condition: "service_healthy" },
+      },
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 3,
+      },
+    };
+  }
+
   // Dashboard service
   services.dashboard = {
     image: "blissful-infra-dashboard:latest",
@@ -264,6 +314,10 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   }
   if (agentServices.length > 0) {
     volumes[`${name}-agent-state`] = null;
+  }
+  if (monitoring === "prometheus") {
+    volumes[`${name}-prometheus-data`] = null;
+    volumes[`${name}-grafana-data`] = null;
   }
 
   const compose: Record<string, unknown> = { services };
@@ -324,11 +378,11 @@ async function generateNginxConf(projectDir: string): Promise<void> {
   ];
 
   const locationBlocks = backendPaths
-    .map((p) => `    location ${p} {\n        proxy_pass http://app:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
+    .map((p) => `    location ${p} {\n        proxy_pass http://backend:8080;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }`)
     .join("\n\n");
 
   const wsBlock = `    location /ws/ {
-        proxy_pass http://app:8080;
+        proxy_pass http://backend:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -363,6 +417,7 @@ export const startCommand = new Command("start")
   .option("-d, --database <database>", `Database (none, postgres, redis, postgres-redis)`)
   .option("-l, --link", "Link to templates instead of copying (for template development)")
   .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")
+  .option("--no-monitoring", "Disable Prometheus + Grafana monitoring stack")
   .action(async (name: string, opts: StartOptions) => {
     console.log();
     console.log(chalk.bold("⚡ blissful-infra start"), chalk.dim("- Create and run fullstack app"));
@@ -386,9 +441,10 @@ export const startCommand = new Command("start")
     const database = opts.database || DEFAULTS.database;
     const linkMode = opts.link || false;
     const plugins = opts.plugins ? parsePluginSpecs(opts.plugins.split(",").map(p => p.trim())) : [];
+    const monitoring = opts.monitoring === false ? "default" : "prometheus";
 
     // Check for port conflicts before creating anything
-    const requiredPorts = getRequiredPorts({ deployTarget: "local-only", name:"gg", type: "fullstack", database, plugins });
+    const requiredPorts = getRequiredPorts({ deployTarget: "local-only", name:"gg", type: "fullstack", database, plugins, monitoring });
     const portResults = await checkPorts(requiredPorts);
     const conflicts = portResults.filter((p) => p.inUse);
 
@@ -468,6 +524,21 @@ export const startCommand = new Command("start")
       }
     }
 
+    // Copy monitoring templates
+    if (monitoring === "prometheus") {
+      scaffoldSpinner.text = "Copying Prometheus + Grafana config...";
+      await copyTemplate("prometheus", path.join(projectDir, "prometheus"), {
+        projectName: name,
+        database,
+        deployTarget: "local-only",
+      });
+      await copyTemplate("grafana", path.join(projectDir, "grafana"), {
+        projectName: name,
+        database,
+        deployTarget: "local-only",
+      });
+    }
+
     // Create config
     const configLines = [
       "# Blissful Infra Configuration",
@@ -478,6 +549,9 @@ export const startCommand = new Command("start")
       `database: ${database}`,
       "deploy_target: local-only",
     ];
+    if (monitoring === "default") {
+      configLines.push("monitoring: default");
+    }
     if (plugins.length > 0) {
       configLines.push(`plugins: ${serializePluginSpecs(plugins)}`);
     }
@@ -511,7 +585,7 @@ docker-compose.override.yaml
 
     // Step 2: Generate docker-compose
     const composeSpinner = ora("Generating docker-compose.yaml...").start();
-    await generateDockerCompose(projectDir, name, database, plugins);
+    await generateDockerCompose(projectDir, name, database, plugins, monitoring);
     composeSpinner.succeed("Generated docker-compose.yaml");
 
     // Step 3: Build dashboard image and start containers
@@ -566,6 +640,10 @@ docker-compose.override.yaml
       const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
       console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
     });
+    if (monitoring === "prometheus") {
+      console.log(chalk.dim("  Prometheus:  ") + chalk.cyan("http://localhost:9090"));
+      console.log(chalk.dim("  Grafana:     ") + chalk.cyan("http://localhost:3001"));
+    }
     console.log(chalk.dim("  Dashboard:   ") + chalk.cyan("http://localhost:3002"));
     console.log();
 

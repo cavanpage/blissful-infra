@@ -90,6 +90,12 @@ export function getRequiredPorts(config: ProjectConfig): { port: number; service
     ports.push({ port: 8095 + i, service: `Agent Service (${p.instance})` });
   });
 
+  // Monitoring ports
+  if (config.monitoring === "prometheus") {
+    ports.push({ port: 9090, service: "Prometheus" });
+    ports.push({ port: 3001, service: "Grafana" });
+  }
+
   // Database ports
   if (config.database === "postgres" || config.database === "postgres-redis") {
     ports.push({ port: 5432, service: "PostgreSQL" });
