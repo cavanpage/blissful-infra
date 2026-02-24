@@ -14,7 +14,7 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 3** | Observability | Metrics, logs, dashboard v1 | ✅ Complete |
 | **Phase 4** | Resilience | Chaos testing + FMEA + Canary deployments | ✅ Complete |
 | **Phase 5** | Intelligence | Full agent + knowledge base | 🔧 In Progress |
-| **Phase 6** | Scale | More templates + cloud deploy + enterprise components | ⏳ Planned |
+| **Phase 6** | Scale | More templates + cloud deploy + enterprise components + plugin SDK | ⏳ Planned |
 | **Phase 7** | Autonomy | LangGraph virtual employees that build features for your apps | ⏳ Planned |
 
 ---
@@ -862,6 +862,167 @@ Created PR #142: fix/bounded-greeting-cache
 
 **Note:** These components are optional and add significant resource requirements. Enable selectively based on learning goals.
 
+### 6.7 Plugin SDK (Third-Party Extensibility)
+
+**Goal:** Any developer can publish a `blissful-infra-plugin-*` npm package and users can install it with one command. The CLI treats it identically to a built-in plugin.
+
+#### Strategy
+
+Today's plugins (`ai-pipeline`, `agent-service`) are hard-coded: recognized by name in `start.ts`, templates live inside the CLI package, and docker-compose contributions are written inline. This blocks third parties from extending the platform.
+
+The plugin SDK decouples plugin logic from the CLI by introducing a `plugin.json` manifest contract — inspired by how Nx handles generators/executors and how Garden handles providers. The CLI becomes a loader that knows nothing about specific plugin behaviour; it only reads the manifest.
+
+**What other tools do:**
+
+| Tool | Pattern |
+|------|---------|
+| Nx | `blissful-infra-plugin-*` npm packages exporting generators and executors |
+| Garden | npm packages implementing a typed provider interface, resolved and executed at runtime |
+| Tilt | Git-hosted Starlark files, loaded by URL — no install step |
+| Backstage | npm packages exporting React components + API routers, registered in app config |
+
+For blissful-infra, the **npm package pattern** is the right fit: Node-based CLI, existing npm distribution, plugin authors already know npm.
+
+#### The Plugin Contract
+
+A plugin is an npm package named `blissful-infra-plugin-<name>` containing:
+
+```
+blissful-infra-plugin-redis-cache/
+├── plugin.json          ← manifest: ports, service definition, health endpoints
+├── template/            ← scaffolded into the project directory on install
+│   ├── Dockerfile
+│   └── src/
+└── index.js             ← optional: additional CLI command contributions
+```
+
+```json
+// plugin.json
+{
+  "name": "redis-cache",
+  "version": "1.0.0",
+  "description": "Redis caching layer with cache warming API",
+  "port": 8091,
+  "template": "./template",
+  "healthPath": "/health",
+  "service": {
+    "environment": {
+      "CACHE_TTL": "3600"
+    },
+    "depends_on": ["redis", "kafka"]
+  }
+}
+```
+
+The CLI reads `plugin.json` at runtime — no hard-coded knowledge of the plugin is needed in the core CLI.
+
+#### Plugin Resolution Order
+
+1. `~/.blissful-infra/plugins/<name>/` — locally installed plugins
+2. Globally installed npm packages matching `blissful-infra-plugin-<name>`
+3. Built-in plugins bundled with the CLI (`ai-pipeline`, `agent-service`)
+
+#### Dashboard Integration
+
+Rather than loading external React components (complex, fragile), plugins that expose a `/health` and `/status` endpoint automatically get a **generic plugin card** in the dashboard — service name, health status, port, and a link to the plugin's own UI if it serves one. Richer dashboard integration requires the plugin to serve its own frontend on its port.
+
+#### Implementation Plan
+
+##### 6.7.1 Plugin Manifest Schema
+- [ ] Define `PluginManifest` TypeScript interface (name, version, port, template, service, healthPath)
+- [ ] JSON schema validation on manifest load
+- [ ] Error messages for malformed manifests
+- [ ] Versioning strategy (semver, compatibility range with CLI version)
+
+**Location:** `packages/cli/src/utils/plugin-manifest.ts`
+
+##### 6.7.2 Plugin Resolver
+- [ ] `resolvePlugin(name)` — searches local dir → global npm → built-ins
+- [ ] `loadManifest(pluginDir)` — reads and validates `plugin.json`
+- [ ] `getPluginTemplate(manifest)` — returns path to template directory
+- [ ] `getServiceDefinition(manifest, projectName, port)` — generates docker-compose service block from manifest
+
+**Location:** `packages/cli/src/utils/plugin-resolver.ts`
+
+##### 6.7.3 `blissful-infra plugin` Command
+- [ ] `plugin install <name>` — install from npm or local path (`npm install -g blissful-infra-plugin-<name>`)
+- [ ] `plugin list` — list installed plugins with versions
+- [ ] `plugin remove <name>` — uninstall a plugin
+- [ ] `plugin info <name>` — show plugin manifest details
+
+**Location:** `packages/cli/src/commands/plugin.ts`
+
+##### 6.7.4 Dynamic Docker-Compose Generation
+- [ ] Replace hard-coded `ai-pipeline` / `agent-service` blocks in `start.ts` and `up.ts` with manifest-driven generation
+- [ ] `generatePluginService(manifest, projectName, port)` — replaces inline service objects
+- [ ] Template variable substitution applied to plugin templates via existing `copyTemplate`
+- [ ] Port allocation: plugins assigned ports sequentially starting at 8090
+
+**Location:** `packages/cli/src/commands/start.ts`, `packages/cli/src/commands/up.ts`
+
+##### 6.7.5 Built-In Plugin Migration
+- [ ] Convert `ai-pipeline` template to include a `plugin.json` manifest
+- [ ] Convert `agent-service` template to include a `plugin.json` manifest
+- [ ] Both continue to work via the built-in fallback in the resolver (no breaking change)
+- [ ] Verify existing `--plugins ai-pipeline` still works after refactor
+
+##### 6.7.6 Dashboard Generic Plugin Panel
+- [ ] Health check polling extended to read registered plugins from config
+- [ ] Any plugin with a `healthPath` gets a health status card automatically
+- [ ] Plugin name, port, version, and health status displayed
+- [ ] "Open UI" link if plugin serves a frontend
+
+**Location:** `packages/cli/src/server/api.ts`, `packages/dashboard/src/App.tsx`
+
+##### 6.7.7 SDK Documentation
+- [ ] `docs/plugin-sdk.md` — Plugin author guide covering: manifest spec, template variables, service definition, publishing to npm
+- [ ] Example plugin: `blissful-infra-plugin-example` (minimal working plugin for reference)
+- [ ] Update README Plugins section with SDK link
+
+#### Plugin Author Workflow
+
+```bash
+# Create a new plugin
+mkdir blissful-infra-plugin-my-service
+cd blissful-infra-plugin-my-service
+# Write plugin.json + template/ directory
+npm publish
+
+# User installs and uses it
+blissful-infra plugin install my-service
+blissful-infra start my-app --plugins my-service
+```
+
+#### Phase 6.7 Definition of Done
+```
+# Plugin author publishes a plugin
+$ npm publish blissful-infra-plugin-redis-cache
+
+# User installs and uses it
+$ blissful-infra plugin install redis-cache
+✓ Installed blissful-infra-plugin-redis-cache@1.0.0
+
+$ blissful-infra start my-app --plugins redis-cache
+✓ Copied redis-cache template → my-app/redis-cache/
+✓ Added redis-cache service to docker-compose.yaml (port 8091)
+✓ my-app-redis-cache running on http://localhost:8091
+
+$ blissful-infra plugin list
+PLUGIN          VERSION   SOURCE    PORT
+ai-pipeline     built-in  built-in  8090
+redis-cache     1.0.0     npm       8091
+
+# Dashboard shows redis-cache health card automatically
+# (no dashboard code changes required for new plugins)
+```
+
+**Success metrics for 6.7:**
+- [ ] Third-party plugin installable and usable end-to-end without changes to the CLI codebase
+- [ ] Built-in `ai-pipeline` migrated to manifest-driven loading (no regression)
+- [ ] `plugin install` / `plugin list` / `plugin remove` all working
+- [ ] Generic dashboard health card appears for any plugin with a `healthPath`
+- [ ] SDK doc covers everything a plugin author needs to publish a working plugin
+
 ---
 
 ## Phase 7: Autonomy
@@ -1336,6 +1497,8 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 ### Phase 6 (Scale)
 - [ ] All 6 templates working
 - [ ] Cloud deployment verified on 1+ provider
+- [ ] Third-party plugin installable and usable without CLI changes
+- [ ] Built-in plugins migrated to manifest-driven loading
 
 ### Phase 7 (Autonomy)
 - [ ] Agent produces a reviewable suggestion with correct diffs for a feature task
