@@ -4,245 +4,226 @@
 
 **Enterprise infrastructure on your laptop.**
 
-Create, run, and manage fullstack apps with CI/CD pipelines, observability, canary deployments, chaos testing, and an AI agent — all locally.
+One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required.
 
 ---
 
-[Get Started](#quick-start) · [Commands](#commands) · [Dashboard](#web-dashboard) · [Templates](#project-types) · [Contributing](#contributing)
+[What is blissful-infra?](#what-is-blissful-infra) · [Use Cases](#use-cases) · [Quickstart](#quickstart) · [Basics](#basics) · [Next Steps](#next-steps)
 
 ---
 
 </div>
 
-## Prerequisites
+## What is blissful-infra?
 
-- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** must be installed and **running**
-- **Node.js 18+**
-- (Optional) [Ollama](https://ollama.com/) for the local AI agent
-
-## Quick Start
+blissful-infra is a CLI that scaffolds and runs production-grade full-stack applications locally. Run one command and get a backend API, React frontend, Kafka message bus, Postgres database, Prometheus metrics, Grafana dashboards, Jenkins CI/CD pipeline, and an AI debugging agent — all wired together and running in Docker.
 
 ```bash
-# Install globally
-npm install -g blissful-infra
-
-# Create and run a fullstack app (Spring Boot + React)
 blissful-infra start my-app
-
-# That's it! Your app is running:
-#   Frontend: http://localhost:3000
-#   Backend:  http://localhost:8080
 ```
 
-### Customize Your Stack
+That's it. No YAML to hand-write. No services to manually connect. No cloud account required.
+
+blissful-infra organizes your local stack into a single managed environment and exposes it through a dashboard UI. The same configuration and workflows work whether you're iterating on a feature locally or handing off to a CI pipeline.
+
+**What makes it different from tools like Tilt or Garden:**
+
+Those tools orchestrate services you already wrote. blissful-infra also *creates* them — scaffolding a production-ready project with observability, CI/CD, and AI tooling wired in from the start. It's the difference between a toolkit and a complete local platform.
+
+---
+
+## Use Cases
+
+### Starting a new project from scratch
+
+blissful-infra's primary use case. Pick a backend and frontend, optionally add a database or plugins, and have a running full-stack app with real infrastructure in under a minute.
 
 ```bash
-# Different backend
-blissful-infra start my-app --backend fastapi
-
-# Add a database
-blissful-infra start my-app --database postgres
-
-# Add plugins
-blissful-infra start my-app --plugins ai-pipeline
-
-# Full control
-blissful-infra start my-app \
-  --backend spring-boot \
-  --frontend react-vite \
-  --database postgres-redis \
-  --plugins ai-pipeline
+blissful-infra start my-app --backend spring-boot --database postgres
 ```
 
-### Step-by-Step
+### Standardizing dev environments across a team
+
+Every developer runs the same stack. `blissful-infra up` in a project directory reads the `blissful-infra.yaml` config and starts the exact same services, ports, and configuration — no "works on my machine" drift.
 
 ```bash
-# Create project without running
-blissful-infra create my-app --template fullstack
-
-# Start later
+git clone git@github.com:your-org/my-app.git
 cd my-app && blissful-infra up
 ```
 
-## Commands
+### Learning enterprise infrastructure patterns
 
-All commands support both `blissful-infra <command> <project>` and `blissful-infra <project> <command>` syntax.
+blissful-infra is designed to be a working reference for how production systems are built — event-driven microservices, Kafka streams, Kubernetes manifests, GitOps with Argo CD, canary deployments, chaos testing, and observability with Prometheus and Grafana. Everything is generated as real, readable code in your project directory.
 
-### Core
+### Building AI/ML-powered services
 
-| Command | Description |
-|---------|-------------|
-| `start <name>` | Create and run a new project |
-| `create <name>` | Create project without starting |
-| `up [name]` | Start a project |
-| `down [name]` | Stop a project |
-| `dev [name]` | Development mode with hot reload |
-| `logs [name]` | View project logs |
+The `ai-pipeline` plugin adds a Python service that consumes Kafka events, classifies them with a trained ML model, and writes predictions back to Kafka — all connected to your existing backend automatically.
 
-### CI/CD & Deployments
+```bash
+blissful-infra start my-app --plugins ai-pipeline
+```
 
-| Command | Description |
-|---------|-------------|
-| `pipeline [name]` | View Jenkins pipeline status |
-| `pipeline [name] --local` | Run CI/CD pipeline locally (build, test, containerize, scan) |
-| `deploy [name]` | Deploy to an environment |
-| `canary [name]` | Start a canary deployment |
+---
 
-### Observability & Analysis
+## Quickstart
 
-| Command | Description |
-|---------|-------------|
-| `agent [name]` | AI agent for debugging (uses Ollama) |
-| `analyze [name]` | Root cause analysis on failures |
-| `perf [name]` | Performance analysis |
-| `chaos [name]` | Run chaos/resilience tests |
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, Node.js 18+
 
-### Infrastructure
+```bash
+# Install
+npm install -g blissful-infra
 
-| Command | Description |
-|---------|-------------|
-| `jenkins start/stop/status` | Manage Jenkins CI server |
-| `jenkins add-project <name>` | Register project with Jenkins |
-| `jenkins build <name>` | Trigger a Jenkins build |
-| `dashboard` | Launch the web dashboard |
+# Create and run a fullstack app
+blissful-infra start my-app
 
-## Web Dashboard
+# Open the dashboard
+blissful-infra dashboard
+```
+
+Your app is now running:
+
+| Service    | URL                       |
+|------------|---------------------------|
+| Frontend   | http://localhost:3000     |
+| Backend    | http://localhost:8080     |
+| Grafana    | http://localhost:3001     |
+| Prometheus | http://localhost:9090     |
+| Dashboard  | http://localhost:3002     |
+
+---
+
+## Basics
+
+### Projects
+
+A blissful-infra project is a directory with a `blissful-infra.yaml` config file and a generated `docker-compose.yaml`. Every service — backend, frontend, Kafka, databases, monitoring — is defined in that compose file and managed together.
+
+```
+my-app/
+├── backend/              # Spring Boot / FastAPI / Express / Go
+├── frontend/             # React + Vite
+├── prometheus/           # Metrics scrape config
+├── grafana/              # Dashboards and datasources
+├── k8s/                  # Kubernetes manifests + Argo CD
+├── Jenkinsfile           # CI/CD pipeline definition
+├── docker-compose.yaml   # Everything wired together
+└── blissful-infra.yaml   # Project config
+```
+
+### Templates
+
+The backend and frontend are generated from templates. Choose the stack that fits your project:
+
+**Backend**
+
+| Template      | Stack                                          |
+|---------------|------------------------------------------------|
+| `spring-boot` | Kotlin + Spring Boot + Kafka + WebSockets      |
+| `fastapi`     | Python + FastAPI + Kafka + WebSockets          |
+| `express`     | Node + Express + TypeScript + Kafka            |
+| `go-chi`      | Go + Chi + Kafka + WebSockets                  |
+
+**Frontend**
+
+| Template      | Stack                                          |
+|---------------|------------------------------------------------|
+| `react-vite`  | React + Vite + TypeScript + TailwindCSS        |
+| `nextjs`      | Next.js + TypeScript + TailwindCSS             |
+
+```bash
+blissful-infra start my-app --backend fastapi --frontend react-vite
+```
+
+### Monitoring
+
+Every project includes Prometheus and Grafana by default. Prometheus scrapes your backend's `/actuator/prometheus` endpoint. Three dashboards are provisioned automatically: Service Overview, JVM Metrics, and Infrastructure.
+
+To disable monitoring:
+
+```bash
+blissful-infra start my-app --no-monitoring
+```
+
+### The Dashboard
+
+The dashboard is a local web UI for managing all your projects in one place.
 
 ```bash
 blissful-infra dashboard
 ```
 
-A single control panel at `http://localhost:3001` for managing all your projects:
+| Tab          | What it does                                              |
+|--------------|-----------------------------------------------------------|
+| Logs         | Real-time log streaming from all containers               |
+| Metrics      | CPU, memory, HTTP latency, error rates                    |
+| Agent        | Chat with the AI about errors and issues                  |
+| Pipeline     | Jenkins pipeline stages, trigger builds                   |
+| Environments | Deploy and rollback across environments                   |
+| Settings     | Configure alert thresholds and log retention              |
 
-- **Logs** — Real-time log streaming
-- **Agent** — Chat with the AI about errors and issues
-- **Metrics** — CPU, memory, HTTP latency, error rates with time-series charts
-- **Pipeline** — View Jenkins pipeline stages, trigger builds
-- **Environments** — Deploy and rollback across environments
-- **Settings** — Configure alert thresholds, log retention, metrics export
+### Commands
 
-Additional services started with dashboard:
-- API: `http://localhost:3002`
-- Jenkins: `http://localhost:8081` (admin/admin)
-- Registry: `localhost:5000`
+**Core**
 
-Options:
+| Command              | Description                          |
+|----------------------|--------------------------------------|
+| `start <name>`       | Create and run a new project         |
+| `create <name>`      | Create project without starting      |
+| `up [name]`          | Start an existing project            |
+| `down [name]`        | Stop a project                       |
+| `dev [name]`         | Development mode with hot reload     |
+| `logs [name]`        | View project logs                    |
+
+**CI/CD & Deployments**
+
+| Command                    | Description                          |
+|----------------------------|--------------------------------------|
+| `pipeline [name]`          | View Jenkins pipeline status         |
+| `pipeline [name] --local`  | Run CI/CD pipeline locally           |
+| `deploy [name]`            | Deploy to an environment             |
+| `canary [name]`            | Start a canary deployment            |
+
+**Observability & Analysis**
+
+| Command           | Description                              |
+|-------------------|------------------------------------------|
+| `agent [name]`    | AI agent for debugging (uses Ollama)     |
+| `analyze [name]`  | Root cause analysis on failures          |
+| `perf [name]`     | Performance analysis                     |
+| `chaos [name]`    | Run chaos / resilience tests             |
+
+**Infrastructure**
+
+| Command                       | Description                          |
+|-------------------------------|--------------------------------------|
+| `jenkins start/stop/status`   | Manage Jenkins CI server             |
+| `jenkins add-project <name>`  | Register project with Jenkins        |
+| `jenkins build <name>`        | Trigger a Jenkins build              |
+| `dashboard`                   | Launch the web dashboard             |
+
+---
+
+## Next Steps
+
+- **[Learning Guide](./docs/LEARNING_GUIDE.md)** — Understand the enterprise infrastructure patterns blissful-infra uses (Kafka, Kubernetes, GitOps, observability)
+- **[Product Spec](./specs/product.md)** — Full technical specification for all features
+- **[Agent Spec](./specs/agent.md)** — How the AI analysis agent works
+- **[Roadmap](./specs/timeline.md)** — What's built and what's coming
+
+### Plugins
+
+Extend your project with optional plugins:
+
 ```bash
-blissful-infra dashboard --dir ~/projects   # Specify projects directory
-blissful-infra dashboard --port 3002        # Custom API port
-blissful-infra dashboard --no-open          # Don't auto-open browser
-blissful-infra dashboard --no-jenkins       # Don't start Jenkins
-```
-
-## Project Types
-
-| Type | Description |
-|------|-------------|
-| `fullstack` | Backend + Frontend monorepo with API proxy |
-| `backend` | Backend API only |
-| `frontend` | Frontend static site only |
-
-### Backend Templates
-
-| Template | Stack |
-|----------|-------|
-| `spring-boot` | Kotlin + Spring Boot + Kafka + WebSockets |
-| `fastapi` | Python + FastAPI + Kafka + WebSockets |
-| `express` | Node + Express + TypeScript + Kafka + WebSockets |
-| `go-chi` | Go + Chi + Kafka + WebSockets |
-
-### Frontend Templates
-
-| Template | Stack |
-|----------|-------|
-| `react-vite` | React + Vite + TypeScript + TailwindCSS + React Query |
-| `nextjs` | Next.js + TypeScript + TailwindCSS |
-
-## Plugins
-
-Extend your project with optional plugins using the `--plugins` flag.
-
-### Available Plugins
-
-| Plugin | Description |
-|--------|-------------|
-| `ai-pipeline` | AI/ML pipeline with PySpark (batch + streaming), scikit-learn classifier, and FastAPI |
-
-### Usage
-
-```bash
-# Add a plugin when creating a project
+# Add an AI/ML pipeline service
 blissful-infra start my-app --plugins ai-pipeline
-
-# Multiple plugins (comma-separated)
-blissful-infra start my-app --plugins ai-pipeline,another-plugin
-
-# With create command
-blissful-infra create my-app --template fullstack --plugins ai-pipeline
 ```
 
-When a plugin is added, its service is included in `docker-compose.yaml` and visible in the dashboard health checks.
+| Plugin        | Description                                                               |
+|---------------|---------------------------------------------------------------------------|
+| `ai-pipeline` | ML pipeline with PySpark (batch + streaming), scikit-learn, and FastAPI   |
 
-### AI Pipeline Plugin
-
-The `ai-pipeline` plugin adds a Python service that consumes Kafka events, classifies them using ML, and writes predictions back to Kafka.
-
-- **API:** `http://localhost:8090`
-- **Endpoints:**
-  - `GET /health` — Service health + pipeline status
-  - `POST /predict` — Classify a single event on demand
-  - `GET /predictions` — Recent predictions (last 100)
-  - `GET /pipeline/status` — Pipeline mode, running state, processed count
-- **Modes:** Streaming (Spark Structured Streaming) or Batch
-- **Stack:** Python 3.11, PySpark 3.5, FastAPI, scikit-learn, kafka-python-ng
-
-```
-my-app/
-├── ai-pipeline/          # AI/ML pipeline service
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py       # FastAPI endpoints
-│       ├── config.py     # Environment config
-│       ├── kafka_utils.py
-│       ├── model/
-│       │   └── classifier.py   # TF-IDF + Naive Bayes
-│       └── pipeline/
-│           ├── streaming.py    # Spark Structured Streaming
-│           └── batch.py        # Spark batch processing
-```
-
-## Project Structure
-
-A fullstack project generates:
-
-```
-my-app/
-├── backend/              # Spring Boot / FastAPI / Express / Go
-│   ├── src/
-│   ├── Dockerfile
-│   └── build.gradle.kts
-├── frontend/             # React + Vite
-│   ├── src/
-│   ├── Dockerfile
-│   └── package.json
-├── ai-pipeline/          # (if --plugins ai-pipeline)
-├── k8s/
-│   ├── base/             # Kubernetes manifests
-│   ├── overlays/         # Environment-specific configs
-│   └── argocd/           # GitOps application definition
-├── Jenkinsfile           # CI/CD pipeline
-├── docker-compose.yaml
-└── blissful-infra.yaml
-```
-
-**Services:**
-- Frontend: `http://localhost:3000` (nginx serving React, proxies `/api/*` to backend)
-- Backend: `http://localhost:8080`
-- Kafka: `localhost:9092` (event streaming)
-- PostgreSQL: `localhost:5432` (if database selected)
-
-## Contributing
+### Contributing
 
 ```bash
 # Clone and install
@@ -252,7 +233,7 @@ cd blissful-infra && npm install
 # Build the CLI
 cd packages/cli && npm run build
 
-# Create a test project with linked templates (edits to templates reflect immediately)
+# Create a test project with linked templates (edits reflect immediately)
 node dist/index.js start test-app --link
 
 # Cleanup
@@ -260,14 +241,7 @@ docker compose -f test-app/docker-compose.yaml down
 rm -rf test-app
 ```
 
-**Note:** In link mode, template variables (like `{{PROJECT_NAME}}`) won't be substituted since files are symlinked. Use `--link` for developing template code, then test without it to verify variable substitution.
-
-## Additional Docs
-
-- [Product Spec](./specs/product.md)
-- [Agent Spec](./specs/agent.md)
-- [Timeline](./specs/timeline.md)
-- [Learning Guide](./docs/LEARNING_GUIDE.md)
+> **Note:** In link mode, template variables like `{{PROJECT_NAME}}` won't be substituted since files are symlinked. Use `--link` for developing template code, then test without it to verify substitution.
 
 ---
 
