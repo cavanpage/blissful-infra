@@ -993,7 +993,96 @@ blissful-infra plugin install my-service
 blissful-infra start my-app --plugins my-service
 ```
 
-#### Phase 6.7 Definition of Done
+#### 6.8 AI Data Platform Stack
+
+**Goal:** When the `ai-pipeline` plugin is enabled, automatically provision a production-grade AI/ML data stack alongside it — columnar storage, experiment tracking, and a visual pipeline orchestrator. Zero extra flags required.
+
+**Tools included:**
+
+| Tool | Role | Port | Open Source Alternative to |
+|------|------|------|---------------------------|
+| **ClickHouse** | Columnar OLAP store for predictions + events at scale | 8123 | Snowflake, BigQuery |
+| **MLflow** | Experiment tracking + model registry + metrics | 5001 | SageMaker Experiments, W&B |
+| **Mage** | Visual data pipeline IDE (Python/SQL, scheduling) | 6789 | Palantir Foundry, Airflow |
+
+**What gets deployed (automatically with `--plugins ai-pipeline`):**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Docker Compose                       │
+│                                                          │
+│  ┌───────────┐  Kafka events  ┌──────────────────────┐  │
+│  │   Kafka   │───────────────►│   AI Pipeline        │  │
+│  │  :9092    │                │   (FastAPI + Spark)  │  │
+│  └───────────┘                │   :8090              │  │
+│                               └──────┬───────────────┘  │
+│                                      │                  │
+│                      ┌───────────────┼───────────────┐  │
+│                      ▼               ▼               ▼  │
+│               ┌──────────┐  ┌──────────────┐  ┌───────┐ │
+│               │ClickHouse│  │    MLflow    │  │ Mage  │ │
+│               │ :8123    │  │    :5001     │  │ :6789 │ │
+│               │ (store   │  │ (track       │  │(orch- │ │
+│               │  preds)  │  │  experiments)│  │estra- │ │
+│               └──────────┘  └──────────────┘  │ tion) │ │
+│                                               └───────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+**ClickHouse setup:**
+- [ ] ClickHouse container in docker-compose when ai-pipeline plugin present
+- [ ] `predictions` table auto-created on startup (timestamp, event_id, name, category, confidence, sentiment)
+- [ ] MergeTree engine with timestamp + event_id ordering for fast time-range queries
+- [ ] `clickhouse_utils.py` helper in ai-pipeline template: `init_predictions_table()`, `store_prediction()`
+- [ ] Port: 8123 (HTTP API)
+
+**MLflow setup:**
+- [ ] MLflow tracking server in docker-compose alongside ai-pipeline
+- [ ] SQLite backend store (zero external dependencies)
+- [ ] `mlflow_utils.py` helper: `setup_mlflow()`, `log_model_training()`
+- [ ] Classifier training stats logged as MLflow run on startup (n_samples, n_classes, algorithm)
+- [ ] Port: 5001
+
+**Mage setup:**
+- [ ] Mage orchestration container in docker-compose
+- [ ] Persistent volume for pipeline definitions
+- [ ] Pre-configured with project directory via env var
+- [ ] Access Mage UI to build Kafka → ClickHouse pipelines visually
+- [ ] Port: 6789
+
+**ai-pipeline template integration:**
+- [ ] `config.py` — add `MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT`, `CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, `CLICKHOUSE_DB` env vars
+- [ ] `requirements.txt` — add `mlflow-skinny`, `clickhouse-connect`
+- [ ] `app/mlflow_utils.py` — MLflow tracking helpers (best-effort, non-blocking)
+- [ ] `app/clickhouse_utils.py` — ClickHouse storage helpers (best-effort, non-blocking)
+- [ ] `app/main.py` — initialize data platform connections on startup, store predictions to ClickHouse, log training to MLflow
+- [ ] `app/model/classifier.py` — `get_training_metadata()` returns stats for MLflow logging
+
+**Port allocation:**
+- [ ] `ports.ts` — check ClickHouse (8123), MLflow (5001), Mage (6789) when ai-pipeline plugin present
+
+**Console output:**
+```
+  ✓ AI Pipeline:   http://localhost:8090
+  ✓ ClickHouse:    http://localhost:8123
+  ✓ MLflow:        http://localhost:5001
+  ✓ Mage:          http://localhost:6789
+```
+
+#### Phase 6.8 Definition of Done
+```
+$ blissful-infra start my-app --plugins ai-pipeline
+✓ AI Pipeline running on http://localhost:8090
+✓ ClickHouse ready at http://localhost:8123
+✓ MLflow UI at http://localhost:5001
+✓ Mage pipelines at http://localhost:6789
+
+# MLflow shows experiment "my-app-pipeline" with model training run
+# ClickHouse has predictions table, rows added on each /predict call
+# Mage UI lets you build visual Kafka → ClickHouse pipelines
+```
+
+### Phase 6.7 Definition of Done
 ```
 # Plugin author publishes a plugin
 $ npm publish blissful-infra-plugin-redis-cache

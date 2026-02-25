@@ -68,10 +68,19 @@ class EventClassifier:
         texts = [t for t, _ in TRAINING_DATA]
         labels = [l for _, l in TRAINING_DATA]
         self.classes = sorted(set(labels))
+        self._n_samples = len(texts)
 
         X = self.vectorizer.fit_transform(texts)
         self.model.fit(X, labels)
         logger.info("Classifier trained with %d samples, %d classes", len(texts), len(self.classes))
+
+    def get_training_metadata(self) -> dict:
+        """Return training stats suitable for MLflow logging."""
+        return {
+            "n_samples": getattr(self, "_n_samples", len(TRAINING_DATA)),
+            "n_classes": len(self.classes),
+            "classes": list(self.classes),
+        }
 
     def predict(self, event_json: str) -> dict:
         """Classify an event and return prediction with confidence."""

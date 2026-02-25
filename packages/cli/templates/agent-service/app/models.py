@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 
 class AgentRole(str, Enum):
@@ -42,6 +42,7 @@ class Task(BaseModel):
     steps: list[TaskStep] = []
     result: Optional[str] = None
     branch: Optional[str] = None
+    suggestion: Optional[Suggestion] = None
     created_at: str
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -56,6 +57,19 @@ class Agent(BaseModel):
     created_at: str
 
 
+class ProposedChange(BaseModel):
+    path: str
+    content: str
+    description: str = ""
+    diff: Optional[str] = None  # unified diff computed at review time
+
+
+class Suggestion(BaseModel):
+    plan: str
+    changes: List[ProposedChange]
+    revision: int = 1
+
+
 class HireRequest(BaseModel):
     name: str
     role: AgentRole
@@ -63,3 +77,7 @@ class HireRequest(BaseModel):
 
 class AssignRequest(BaseModel):
     description: str
+
+
+class ReviseRequest(BaseModel):
+    feedback: str

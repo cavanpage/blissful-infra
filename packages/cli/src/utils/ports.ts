@@ -78,11 +78,16 @@ export function getRequiredPorts(config: ProjectConfig): { port: number; service
   // Dashboard port
   ports.push({ port: 3002, service: "Dashboard" });
 
-  // AI Pipeline ports (one per instance)
+  // AI Pipeline ports (one per instance) + data platform stack
   const aiPipelines = config.plugins?.filter(p => p.type === "ai-pipeline") || [];
   aiPipelines.forEach((p, i) => {
     ports.push({ port: 8090 + i, service: `AI Pipeline (${p.instance})` });
   });
+  if (aiPipelines.length > 0) {
+    ports.push({ port: 8123, service: "ClickHouse" });
+    ports.push({ port: 5001, service: "MLflow" });
+    ports.push({ port: 6789, service: "Mage" });
+  }
 
   // Agent service ports (one per instance)
   const agentServices = config.plugins?.filter(p => p.type === "agent-service") || [];
