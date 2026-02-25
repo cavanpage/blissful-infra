@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { execa } from "execa";
 import { loadConfig } from "../utils/config.js";
+import { PLUGIN_REGISTRY, DATA_PLATFORM_REGISTRY } from "../utils/plugin-registry.js";
 import { toExecError } from "../utils/errors.js";
 import {
   collectDockerLogs,
@@ -414,6 +415,17 @@ export function createApiServer(workingDir: string, port = 3002) {
         const health = await checkServiceHealth(projectDir);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(health));
+        return;
+      }
+
+      // GET /api/projects/:name/plugins - Get plugin statuses with metadata
+      const pluginsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/plugins$/);
+      if (req.method === "GET" && pluginsMatch) {
+        const projectName = pluginsMatch[1];
+        const projectDir = path.join(workingDir, projectName);
+        const plugins = await getPluginStatuses(projectDir);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(plugins));
         return;
       }
 
@@ -1257,6 +1269,93 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
   }
 
   return { services, timestamp: Date.now() };
+}
+
+interface PluginStatus {
+  key: string;
+  type: string;
+  displayName: string;
+  description: string;
+  category: string;
+  color: string;
+  port: number;
+  uiUrl: string | null;
+  uiLabel: string | null;
+  status: "healthy" | "unhealthy" | "unknown";
+  responseTimeMs?: number;
+  isDataPlatform: boolean;
+}
+
+async function probeUrl(url: string): Promise<{ status: "healthy" | "unhealthy" | "unknown"; responseTimeMs?: number }> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const start = Date.now();
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    return { status: res.ok ? "healthy" : "unhealthy", responseTimeMs: Date.now() - start };
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
+async function getPluginStatuses(projectDir: string): Promise<PluginStatus[]> {
+  const config = await loadConfig(projectDir);
+  const statuses: PluginStatus[] = [];
+  const enabledTypes = new Set<string>();
+
+  // User-configured plugin instances
+  for (let i = 0; i < (config?.plugins?.length ?? 0); i++) {
+    const plugin = config!.plugins![i];
+    enabledTypes.add(plugin.type);
+
+    const def = PLUGIN_REGISTRY[plugin.type];
+    if (!def) continue;
+
+    const port = config?.pluginConfigs?.[plugin.instance]?.port ?? (8090 + i);
+    const base = `http://localhost:${port}`;
+    const { status, responseTimeMs } = await probeUrl(`${base}${def.healthPath}`);
+
+    statuses.push({
+      key: plugin.instance,
+      type: plugin.type,
+      displayName: `${def.displayName} (${plugin.instance})`,
+      description: def.description,
+      category: def.category,
+      color: def.color,
+      port,
+      uiUrl: def.ui ? `${base}${def.ui.path}` : null,
+      uiLabel: def.ui?.label ?? null,
+      status,
+      responseTimeMs,
+      isDataPlatform: false,
+    });
+  }
+
+  // Data-platform services co-deployed alongside user plugins
+  for (const dp of DATA_PLATFORM_REGISTRY) {
+    if (!dp.enabledWith.some(t => enabledTypes.has(t))) continue;
+
+    const base = `http://localhost:${dp.defaultPort}`;
+    const { status, responseTimeMs } = await probeUrl(`${base}${dp.healthPath}`);
+
+    statuses.push({
+      key: dp.containerKey,
+      type: dp.containerKey,
+      displayName: dp.displayName,
+      description: dp.description,
+      category: dp.category,
+      color: dp.color,
+      port: dp.defaultPort,
+      uiUrl: dp.ui ? `${base}${dp.ui.path}` : null,
+      uiLabel: dp.ui?.label ?? null,
+      status,
+      responseTimeMs,
+      isDataPlatform: true,
+    });
+  }
+
+  return statuses;
 }
 
 async function fetchActuatorMetrics(): Promise<HttpMetrics | undefined> {

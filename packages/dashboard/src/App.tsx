@@ -42,6 +42,11 @@ import {
   EyeOff,
   Download,
   Settings as SettingsIcon,
+  Puzzle,
+  ExternalLink as OpenIcon,
+  Database,
+  Cpu,
+  Workflow,
 } from 'lucide-react'
 
 interface Project {
@@ -148,6 +153,21 @@ interface ServiceHealth {
 interface HealthResponse {
   services: ServiceHealth[]
   timestamp: number
+}
+
+interface PluginStatus {
+  key: string
+  type: string
+  displayName: string
+  description: string
+  category: string
+  color: string
+  port: number
+  uiUrl: string | null
+  uiLabel: string | null
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  responseTimeMs?: number
+  isDataPlatform: boolean
 }
 
 interface HealthHistory {
@@ -384,6 +404,76 @@ function TimeSeriesChart({
   )
 }
 
+function categoryIcon(category: string) {
+  if (category === 'AI/ML') return <Cpu className="w-3 h-3" />
+  if (category === 'Data') return <Database className="w-3 h-3" />
+  if (category === 'Orchestration') return <Workflow className="w-3 h-3" />
+  return <Server className="w-3 h-3" />
+}
+
+function PluginCard({ plugin }: { plugin: PluginStatus }) {
+  return (
+    <div
+      className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden hover:border-gray-600 transition-colors"
+      style={{ borderLeftColor: plugin.color, borderLeftWidth: 3 }}
+    >
+      <div className="p-4 space-y-3">
+        {/* Header: name + category badge */}
+        <div className="flex items-start justify-between gap-2">
+          <span className="font-semibold text-sm text-white leading-tight">{plugin.displayName}</span>
+          <span
+            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
+            style={{ backgroundColor: plugin.color + '22', color: plugin.color }}
+          >
+            {categoryIcon(plugin.category)}
+            {plugin.category}
+          </span>
+        </div>
+
+        {/* Description */}
+        <p className="text-xs text-gray-400 leading-relaxed">{plugin.description}</p>
+
+        {/* Status row */}
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${
+            plugin.status === 'healthy' ? 'bg-green-400' :
+            plugin.status === 'unhealthy' ? 'bg-red-400' :
+            'bg-gray-500'
+          }`} />
+          <span className={`text-xs font-medium ${
+            plugin.status === 'healthy' ? 'text-green-400' :
+            plugin.status === 'unhealthy' ? 'text-red-400' :
+            'text-gray-500'
+          }`}>
+            {plugin.status === 'healthy' ? 'Healthy' : plugin.status === 'unhealthy' ? 'Unhealthy' : 'Unknown'}
+          </span>
+          {plugin.responseTimeMs !== undefined && plugin.status === 'healthy' && (
+            <span className="text-xs text-gray-500 ml-auto">{plugin.responseTimeMs}ms</span>
+          )}
+        </div>
+
+        {/* Port + Open UI button */}
+        <div className="flex items-center justify-between pt-1 border-t border-gray-700">
+          <span className="text-xs text-gray-500">:{plugin.port}</span>
+          {plugin.uiUrl ? (
+            <a
+              href={plugin.uiUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-gray-200 transition-colors"
+            >
+              <OpenIcon className="w-3 h-3" />
+              {plugin.uiLabel ?? 'Open'}
+            </a>
+          ) : (
+            <span className="text-xs text-gray-600 italic">No UI</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
@@ -391,7 +481,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'pipeline' | 'environments' | 'settings'>('logs')
+  const [activeTab, setActiveTab] = useState<'logs' | 'chat' | 'metrics' | 'plugins' | 'pipeline' | 'environments' | 'settings'>('logs')
   const [agentLoading, setAgentLoading] = useState(false)
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory>({
     timestamps: [],
@@ -411,6 +501,9 @@ function App() {
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const [activeAlerts, setActiveAlerts] = useState<TriggeredAlert[]>([])
+
+  // Plugin state
+  const [pluginStatuses, setPluginStatuses] = useState<PluginStatus[]>([])
 
   // Pipeline state
   const [pipelineData, setPipelineData] = useState<PipelineData | null>(null)
@@ -532,6 +625,19 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to fetch health:', e)
+    }
+  }
+
+  const fetchPlugins = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/plugins`)
+      if (res.ok) {
+        const data: PluginStatus[] = await res.json()
+        setPluginStatuses(data)
+      }
+    } catch (e) {
+      console.error('Failed to fetch plugins:', e)
     }
   }
 
@@ -966,6 +1072,14 @@ function App() {
       }
     }
   }, [selectedProject?.name, activeTab, timeWindow])
+
+  useEffect(() => {
+    if (selectedProject && activeTab === 'plugins') {
+      fetchPlugins()
+      const interval = setInterval(fetchPlugins, 15000)
+      return () => clearInterval(interval)
+    }
+  }, [selectedProject?.name, activeTab])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'pipeline') {
@@ -1410,6 +1524,22 @@ function App() {
                   Metrics
                 </button>
                 <button
+                  onClick={() => setActiveTab('plugins')}
+                  className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                    activeTab === 'plugins'
+                      ? 'border-purple-400 text-purple-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <Puzzle className="w-4 h-4" />
+                  Plugins
+                  {pluginStatuses.length > 0 && (
+                    <span className="ml-1 text-xs bg-purple-500/20 text-purple-300 rounded-full px-1.5 py-0.5">
+                      {pluginStatuses.length}
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => setActiveTab('pipeline')}
                   className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                     activeTab === 'pipeline'
@@ -1808,6 +1938,48 @@ function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              ) : activeTab === 'plugins' ? (
+                <div className="flex-1 overflow-auto p-6">
+                  {pluginStatuses.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                      <Puzzle className="w-12 h-12 mb-4 opacity-30" />
+                      <p className="text-lg font-medium mb-1">No plugins active</p>
+                      <p className="text-sm text-gray-600">Start the project with <code className="bg-gray-800 px-1 rounded text-gray-400">--plugins ai-pipeline</code> to enable plugins</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-8">
+                      {/* User-configured plugins */}
+                      {pluginStatuses.filter(p => !p.isDataPlatform).length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                            <Puzzle className="w-4 h-4" />
+                            Active Plugins
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {pluginStatuses.filter(p => !p.isDataPlatform).map(plugin => (
+                              <PluginCard key={plugin.key} plugin={plugin} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Data platform services */}
+                      {pluginStatuses.filter(p => p.isDataPlatform).length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                            <Database className="w-4 h-4" />
+                            Data Platform
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {pluginStatuses.filter(p => p.isDataPlatform).map(plugin => (
+                              <PluginCard key={plugin.key} plugin={plugin} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : activeTab === 'pipeline' ? (
                 <div className="flex-1 overflow-auto p-6">
