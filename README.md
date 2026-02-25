@@ -40,6 +40,9 @@ blissful-infra's primary use case. Pick a backend and frontend, optionally add a
 
 ```bash
 blissful-infra start my-app --backend spring-boot --database postgres
+
+# With the AI/ML data platform
+blissful-infra start my-app --backend spring-boot --database postgres --plugins ai-pipeline
 ```
 
 ### Standardizing dev environments across a team
@@ -57,11 +60,20 @@ blissful-infra is designed to be a working reference for how production systems 
 
 ### Building AI/ML-powered services
 
-The `ai-pipeline` plugin adds a Python service that consumes Kafka events, classifies them with a trained ML model, and writes predictions back to Kafka — all connected to your existing backend automatically.
+The `ai-pipeline` plugin deploys a full ML data platform alongside your app — a Python FastAPI service that classifies Kafka events with scikit-learn, plus ClickHouse for prediction storage, MLflow for experiment tracking, and Mage for visual pipeline orchestration.
 
 ```bash
 blissful-infra start my-app --plugins ai-pipeline
 ```
+
+Your AI stack is now running:
+
+| Service      | URL                        | Purpose                          |
+|--------------|----------------------------|----------------------------------|
+| AI Pipeline  | http://localhost:8090/docs | FastAPI + scikit-learn classifier |
+| ClickHouse   | http://localhost:8123/play | Columnar store for predictions   |
+| MLflow       | http://localhost:5001      | Experiment tracking & model registry |
+| Mage         | http://localhost:6789      | Visual data pipeline orchestrator |
 
 ---
 
@@ -102,6 +114,7 @@ A blissful-infra project is a directory with a `blissful-infra.yaml` config file
 my-app/
 ├── backend/              # Spring Boot / FastAPI / Express / Go
 ├── frontend/             # React + Vite
+├── ai-pipeline/          # ML service (if --plugins ai-pipeline)
 ├── prometheus/           # Metrics scrape config
 ├── grafana/              # Dashboards and datasources
 ├── k8s/                  # Kubernetes manifests + Argo CD
@@ -219,9 +232,9 @@ Extend your project with optional plugins:
 blissful-infra start my-app --plugins ai-pipeline
 ```
 
-| Plugin        | Description                                                               |
-|---------------|---------------------------------------------------------------------------|
-| `ai-pipeline` | ML pipeline with PySpark (batch + streaming), scikit-learn, and FastAPI   |
+| Plugin        | Description                                                                                                  |
+|---------------|--------------------------------------------------------------------------------------------------------------|
+| `ai-pipeline` | Real-time event classification with Kafka + scikit-learn. Co-deploys ClickHouse, MLflow, and Mage automatically. |
 
 ### Contributing
 
