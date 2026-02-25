@@ -7,8 +7,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.config import PROJECT_NAME
 from app.models import (
     Agent, AgentStatus, Task, TaskStatus, TaskStep, StepStatus,
+    Suggestion, ProposedChange,
     HireRequest, AssignRequest,
 )
+from app.tools.suggestion_tools import reset_suggestion, restore_suggestion, get_suggestion
 from app.agents.registry import hire_agent, fire_agent, list_agents, get_agent
 from app.agents.feature_engineer import create_feature_engineer_graph, SYSTEM_PROMPT
 from app.state import load_agents, save_agents
@@ -61,6 +63,17 @@ def api_get_agent(name: str):
     return agent
 
 
+@app.get("/agents/{name}/suggestion", response_model=Suggestion)
+def api_get_suggestion(name: str):
+    agent = get_agent(name)
+    if not agent:
+        raise HTTPException(404, f"Agent '{name}' not found")
+    if not agent.current_task or not agent.current_task.suggestion:
+        raise HTTPException(404, f"No suggestion available for agent '{name}'. "
+                                 f"Agent status: {agent.status.value}")
+    return agent.current_task.suggestion
+
+
 @app.post("/agents/{name}/assign")
 async def api_assign_task(name: str, req: AssignRequest, bg: BackgroundTasks):
     agent = get_agent(name)
@@ -88,6 +101,7 @@ async def api_assign_task(name: str, req: AssignRequest, bg: BackgroundTasks):
 
 async def _run_agent_task(agent_name: str, task: Task) -> None:
     """Execute the LangGraph agent for the assigned task."""
+    tokens = reset_suggestion()
     try:
         graph = create_feature_engineer_graph()
 
@@ -111,15 +125,36 @@ async def _run_agent_task(agent_name: str, task: Task) -> None:
                         timestamp=datetime.now(timezone.utc).isoformat(),
                     ))
 
+        # Build suggestion from accumulated propose_file_change / finalize_suggestion calls
+        raw = get_suggestion()
+        suggestion = None
+        if raw["changes"]:
+            suggestion = Suggestion(
+                plan=raw["plan"] or "No plan summary provided.",
+                changes=[
+                    ProposedChange(
+                        path=c["path"],
+                        content=c["content"],
+                        description=c.get("description", ""),
+                        diff=_compute_diff(c["path"], c["content"]),
+                    )
+                    for c in raw["changes"]
+                ],
+                revision=1,
+            )
+
         agents_data = load_agents()
         if agent_name in agents_data:
             agents_data[agent_name]["status"] = AgentStatus.AWAITING_REVIEW.value
             agents_data[agent_name]["current_task"]["status"] = TaskStatus.COMPLETED.value
             agents_data[agent_name]["current_task"]["completed_at"] = datetime.now(timezone.utc).isoformat()
             agents_data[agent_name]["current_task"]["steps"] = [s.model_dump(mode="json") for s in steps]
+            if suggestion:
+                agents_data[agent_name]["current_task"]["suggestion"] = suggestion.model_dump(mode="json")
             save_agents(agents_data)
 
-        logger.info("Agent %s completed task with %d steps", agent_name, len(steps))
+        logger.info("Agent %s completed task with %d steps, %d proposed changes",
+                    agent_name, len(steps), len(raw["changes"]))
 
     except Exception as e:
         logger.error("Agent %s task failed: %s", agent_name, e)
@@ -129,3 +164,31 @@ async def _run_agent_task(agent_name: str, task: Task) -> None:
             agents_data[agent_name]["current_task"]["status"] = TaskStatus.FAILED.value
             agents_data[agent_name]["current_task"]["result"] = str(e)
             save_agents(agents_data)
+    finally:
+        restore_suggestion(tokens)
+
+
+def _compute_diff(path: str, proposed_content: str) -> str:
+    """Compute a unified diff between the current file and the proposed content.
+    Returns the full proposed content as an addition if the file does not exist."""
+    import difflib
+    import os
+    from app.config import WORKSPACE_DIR
+
+    full_path = os.path.join(WORKSPACE_DIR, path)
+    if os.path.isfile(full_path):
+        with open(full_path) as f:
+            original_lines = f.readlines()
+    else:
+        original_lines = []
+
+    proposed_lines = [l if l.endswith("\n") else l + "\n" for l in proposed_content.splitlines()]
+
+    diff = difflib.unified_diff(
+        original_lines,
+        proposed_lines,
+        fromfile=f"a/{path}",
+        tofile=f"b/{path}",
+        lineterm="",
+    )
+    return "\n".join(diff)

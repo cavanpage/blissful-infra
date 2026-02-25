@@ -406,6 +406,81 @@ async function assignAction(name: string, task: string): Promise<void> {
   }
 }
 
+async function reviewAction(name: string): Promise<void> {
+  try {
+    const response = await fetch(`${AGENT_SERVICE_URL}/agents/${name}/suggestion`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        const err = await response.json() as { detail?: string };
+        console.error(chalk.red(err.detail || `No suggestion available for "${name}".`));
+        console.error(chalk.dim(`Check agent status: blissful-infra agent status ${name}`));
+      } else {
+        console.error(chalk.red(`HTTP ${response.status}`));
+      }
+      return;
+    }
+
+    const suggestion = await response.json() as {
+      plan: string;
+      revision: number;
+      changes: Array<{ path: string; content: string; description: string; diff?: string }>;
+    };
+
+    console.log();
+    console.log(chalk.bold(`Suggestion v${suggestion.revision}`) + chalk.dim(` — ${name}`));
+    console.log();
+    console.log(chalk.bold("Plan:"));
+    for (const line of suggestion.plan.split("\n")) {
+      console.log("  " + line);
+    }
+    console.log();
+    console.log(chalk.bold(`Proposed Changes (${suggestion.changes.length} file${suggestion.changes.length === 1 ? "" : "s"}):`));
+
+    for (const change of suggestion.changes) {
+      const hasRemovals = change.diff ? change.diff.split("\n").some(l => l.startsWith("-") && !l.startsWith("---")) : false;
+      const label = hasRemovals ? chalk.yellow("MOD") : chalk.green("NEW");
+      console.log();
+      console.log(chalk.dim("─".repeat(60)));
+      console.log(`${label} ${chalk.cyan(change.path)}`);
+      if (change.description) {
+        console.log(chalk.dim("    " + change.description));
+      }
+      console.log();
+
+      const diffText = change.diff || change.content.split("\n").map(l => `+${l}`).join("\n");
+      for (const line of diffText.split("\n")) {
+        if (line.startsWith("+++") || line.startsWith("---")) {
+          process.stdout.write(chalk.dim(line) + "\n");
+        } else if (line.startsWith("+")) {
+          process.stdout.write(chalk.green(line) + "\n");
+        } else if (line.startsWith("-")) {
+          process.stdout.write(chalk.red(line) + "\n");
+        } else if (line.startsWith("@@")) {
+          process.stdout.write(chalk.cyan(line) + "\n");
+        } else {
+          process.stdout.write(chalk.dim(line) + "\n");
+        }
+      }
+    }
+
+    console.log();
+    console.log(chalk.dim("─".repeat(60)));
+    console.log();
+    console.log(chalk.dim("Next steps:"));
+    console.log(`  ${chalk.cyan(`blissful-infra agent accept ${name}`)}        apply changes, create branch + PR`);
+    console.log(`  ${chalk.cyan(`blissful-infra agent revise ${name} "..."`)}  send feedback, agent will revise`);
+    console.log(`  ${chalk.cyan(`blissful-infra agent reject ${name}`)}        discard suggestion`);
+    console.log();
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(chalk.red(error.message));
+    }
+    if (error instanceof TypeError && (error as TypeError).message.includes("fetch")) {
+      console.error(chalk.dim("Is the agent-service running? Start with: --plugins agent-service"));
+    }
+  }
+}
+
 async function statusAction(name: string): Promise<void> {
   try {
     const response = await fetch(`${AGENT_SERVICE_URL}/agents/${name}`);
@@ -510,4 +585,10 @@ export const agentCommand = new Command("agent")
       .description("Show agent progress and task details")
       .argument("<name>", "Agent name")
       .action(statusAction)
+  )
+  .addCommand(
+    new Command("review")
+      .description("View proposed changes from a virtual employee")
+      .argument("<name>", "Agent name")
+      .action(reviewAction)
   );
