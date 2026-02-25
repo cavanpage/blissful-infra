@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
-import { copyTemplate, getAvailableTemplates } from "../utils/template.js";
+import { copyTemplate, copyPlugin, getAvailableTemplates, getAvailablePlugins } from "../utils/template.js";
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
 import { parsePluginSpecs, serializePluginSpecs, type PluginInstance } from "../utils/config.js";
@@ -545,6 +545,7 @@ export const startCommand = new Command("start")
     }
 
     const availableTemplates = getAvailableTemplates();
+    const availablePlugins = getAvailablePlugins();
 
     // Step 1: Scaffold
     const scaffoldSpinner = ora("Creating fullstack project...").start();
@@ -584,12 +585,12 @@ export const startCommand = new Command("start")
 
     // Copy plugin templates
     for (const plugin of plugins) {
-      if (availableTemplates.includes(plugin.type)) {
+      if (availablePlugins.includes(plugin.type)) {
         scaffoldSpinner.text = `Copying ${plugin.instance} plugin...`;
         const pluginDir = path.join(projectDir, plugin.instance);
         await fs.mkdir(pluginDir, { recursive: true });
         const index = plugins.filter(p => p.type === plugin.type).indexOf(plugin);
-        await copyTemplate(plugin.type, pluginDir, {
+        await copyPlugin(plugin.type, pluginDir, {
           projectName: name,
           database,
           deployTarget: "local-only",

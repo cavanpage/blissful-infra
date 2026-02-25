@@ -169,12 +169,30 @@ function replaceVariables(content: string, variables: TemplateVariables): string
   return result;
 }
 
+/** Core project templates (backend / frontend scaffolding). */
 export function getAvailableTemplates(): string[] {
-  return ["spring-boot", "react-vite", "ai-pipeline"];
+  return ["spring-boot", "react-vite"];
+}
+
+/** Built-in plugin types that live under templates/plugins/. */
+export function getAvailablePlugins(): string[] {
+  return ["ai-pipeline", "agent-service"];
 }
 
 export function getTemplateDir(templateName: string): string {
   return path.join(__dirname, "..", "..", "templates", templateName);
+}
+
+/**
+ * Copy a built-in plugin template into destDir.
+ * Resolves to templates/plugins/<pluginType>/.
+ */
+export async function copyPlugin(
+  pluginType: string,
+  destDir: string,
+  variables: TemplateVariables
+): Promise<void> {
+  return copyTemplate(`plugins/${pluginType}`, destDir, variables);
 }
 
 export async function linkTemplate(
