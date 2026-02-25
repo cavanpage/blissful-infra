@@ -186,8 +186,71 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   // Generate nginx.conf
   await generateNginxConf(projectDir);
 
-  // AI Pipeline plugins
+  // AI Pipeline plugins + data platform stack (ClickHouse, MLflow, Mage)
   const aiPipelines = plugins.filter(p => p.type === "ai-pipeline");
+  if (aiPipelines.length > 0) {
+    // ClickHouse — columnar OLAP store for predictions at scale
+    services.clickhouse = {
+      image: "clickhouse/clickhouse-server:24.3",
+      container_name: `${name}-clickhouse`,
+      ports: ["8123:8123"],
+      environment: {
+        CLICKHOUSE_DB: "pipeline_db",
+        CLICKHOUSE_USER: "default",
+        CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1",
+      },
+      volumes: [`${name}-clickhouse-data:/var/lib/clickhouse`],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 5,
+        start_period: "20s",
+      },
+    };
+
+    // MLflow — experiment tracking + model registry
+    services.mlflow = {
+      image: "ghcr.io/mlflow/mlflow:v2.13.0",
+      container_name: `${name}-mlflow`,
+      ports: ["5001:5000"],
+      command: [
+        "mlflow", "server",
+        "--host", "0.0.0.0",
+        "--port", "5000",
+        "--backend-store-uri", "sqlite:///mlflow/mlflow.db",
+        "--default-artifact-root", "/mlflow/artifacts",
+      ],
+      volumes: [`${name}-mlflow-data:/mlflow`],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/health"],
+        interval: "10s",
+        timeout: "5s",
+        retries: 5,
+        start_period: "15s",
+      },
+    };
+
+    // Mage — visual data pipeline orchestrator
+    services.mage = {
+      image: "mageai/mageai:latest",
+      container_name: `${name}-mage`,
+      ports: ["6789:6789"],
+      environment: {
+        PROJECT_NAME: `${name}_pipelines`,
+        MAGE_DATA_DIR: "/home/src",
+      },
+      volumes: [`${name}-mage-data:/home/src`],
+      healthcheck: {
+        test: ["CMD", "wget", "--spider", "-q", "http://localhost:6789/"],
+        interval: "15s",
+        timeout: "10s",
+        retries: 5,
+        start_period: "30s",
+      },
+    };
+  }
+
   aiPipelines.forEach((plugin, index) => {
     const port = 8090 + index;
     services[plugin.instance] = {
@@ -206,9 +269,16 @@ async function generateDockerCompose(projectDir: string, name: string, database:
         API_PORT: String(port),
         EVENTS_TOPIC: "events",
         PREDICTIONS_TOPIC: aiPipelines.length > 1 ? `predictions-${plugin.instance}` : "predictions",
+        MLFLOW_TRACKING_URI: "http://mlflow:5000",
+        MLFLOW_EXPERIMENT: `${name}-pipeline`,
+        CLICKHOUSE_HOST: "clickhouse",
+        CLICKHOUSE_PORT: "8123",
+        CLICKHOUSE_DB: "pipeline_db",
       },
       depends_on: {
         kafka: { condition: "service_healthy" },
+        clickhouse: { condition: "service_healthy" },
+        mlflow: { condition: "service_healthy" },
       },
     };
   });
@@ -318,6 +388,11 @@ async function generateDockerCompose(projectDir: string, name: string, database:
   if (monitoring === "prometheus") {
     volumes[`${name}-prometheus-data`] = null;
     volumes[`${name}-grafana-data`] = null;
+  }
+  if (aiPipelines.length > 0) {
+    volumes[`${name}-clickhouse-data`] = null;
+    volumes[`${name}-mlflow-data`] = null;
+    volumes[`${name}-mage-data`] = null;
   }
 
   const compose: Record<string, unknown> = { services };
@@ -634,6 +709,11 @@ docker-compose.override.yaml
       const label = aiPipelinesOut.length > 1 ? `AI Pipeline (${plugin.instance})` : "AI Pipeline";
       console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
     });
+    if (aiPipelinesOut.length > 0) {
+      console.log(chalk.dim("  ClickHouse:  ") + chalk.cyan("http://localhost:8123"));
+      console.log(chalk.dim("  MLflow:      ") + chalk.cyan("http://localhost:5001"));
+      console.log(chalk.dim("  Mage:        ") + chalk.cyan("http://localhost:6789"));
+    }
     const agentServicesOut = plugins.filter(p => p.type === "agent-service");
     agentServicesOut.forEach((plugin, index) => {
       const port = 8095 + index;

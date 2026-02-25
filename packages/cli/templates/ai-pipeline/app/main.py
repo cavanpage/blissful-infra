@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from app.config import PIPELINE_MODE, PROJECT_NAME
 from app.kafka_utils import ensure_topics
 from app.model.classifier import EventClassifier
+from app.mlflow_utils import setup_mlflow, log_model_training
+from app.clickhouse_utils import init_predictions_table, store_prediction
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -41,6 +43,12 @@ def _start_pipeline():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Connect to data platform services (best-effort — pipeline starts regardless)
+    setup_mlflow()
+    init_predictions_table()
+    meta = classifier.get_training_metadata()
+    log_model_training(meta["n_samples"], meta["n_classes"], meta["classes"])
+
     thread = threading.Thread(target=_start_pipeline, daemon=True)
     thread.start()
     logger.info("Pipeline thread started in %s mode", PIPELINE_MODE)
@@ -68,7 +76,10 @@ def health():
 def predict(req: PredictRequest):
     event = {"name": req.name, "eventId": req.eventId or "manual", "eventType": req.eventType or "manual"}
     result = classifier.predict(event)
+    # Enrich with source name for storage and display
+    result["name"] = req.name
     recent_predictions.appendleft(result)
+    store_prediction(result)
     return result
 
 
