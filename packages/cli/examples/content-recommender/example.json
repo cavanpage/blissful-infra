@@ -1,0 +1,9 @@
+{
+  "displayName": "Content Recommender",
+  "description": "Real-time personalized recommendations for a streaming platform. Events flow Spring Boot → Kafka → ALS collaborative filtering → ClickHouse → recommendations API.",
+  "backend": "spring-boot",
+  "frontend": "react-vite",
+  "database": "postgres",
+  "plugins": ["ai-pipeline"],
+  "tags": ["ml", "recommendations", "kafka", "clickhouse", "mlflow"]
+}

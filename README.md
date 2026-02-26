@@ -182,6 +182,7 @@ blissful-infra dashboard
 |----------------------|--------------------------------------|
 | `start <name>`       | Create and run a new project         |
 | `create <name>`      | Create project without starting      |
+| `example [name]`     | Scaffold a reference example project |
 | `up [name]`          | Start an existing project            |
 | `down [name]`        | Stop a project                       |
 | `dev [name]`         | Development mode with hot reload     |
@@ -213,6 +214,29 @@ blissful-infra dashboard
 | `jenkins add-project <name>`  | Register project with Jenkins        |
 | `jenkins build <name>`        | Trigger a Jenkins build              |
 | `dashboard`                   | Launch the web dashboard             |
+
+---
+
+## Examples
+
+Reference implementations showing blissful-infra applied to real-world problems.
+
+```bash
+# List available examples
+blissful-infra example list
+
+# Scaffold an example project (no Docker started — inspect first)
+blissful-infra example content-recommender
+
+# Then start it
+cd content-recommender && blissful-infra up
+```
+
+| Example | Problem | Stack |
+|---------|---------|-------|
+| **[Content Recommender](./examples/content-recommender/)** | Real-time personalized recommendations for a streaming platform | Spring Boot + ALS collaborative filtering + ClickHouse + MLflow |
+
+The `example` command scaffolds a complete, runnable project using the base templates plus the example's custom overrides (ML model, data layer, endpoints). No boilerplate to write — inspect the generated code, then run it.
 
 ---
 

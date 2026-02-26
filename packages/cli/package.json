@@ -10,10 +10,11 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "examples"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r examples dist/examples",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
