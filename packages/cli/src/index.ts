@@ -24,6 +24,7 @@ import { compareCommand, compareAction } from "./commands/compare.js";
 import { canaryCommand } from "./commands/canary.js";
 // Phase 5 commands
 import { analyzeCommand, analyzeAction, suggestCommand, suggestAction } from "./commands/analyze.js";
+import { exampleCommand } from "./commands/example.js";
 
 const program = new Command();
 
@@ -61,6 +62,9 @@ program.addCommand(canaryCommand);
 program.addCommand(analyzeCommand);
 program.addCommand(suggestCommand);
 
+// Examples
+program.addCommand(exampleCommand);
+
 // Check if first arg is a project directory for project-first syntax
 async function isProjectDir(name: string): Promise<boolean> {
   try {
@@ -78,7 +82,7 @@ async function main() {
 
   // If first arg could be a project name (not a known command or flag)
   if (args.length >= 1 && !args[0].startsWith("-")) {
-    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "perf", "chaos", "compare", "canary", "analyze", "suggest", "help"];
+    const knownCommands = ["start", "create", "up", "down", "logs", "dev", "agent", "dashboard", "deploy", "rollback", "status", "pipeline", "jenkins", "perf", "chaos", "compare", "canary", "analyze", "suggest", "example", "help"];
     const firstArg = args[0];
 
     if (!knownCommands.includes(firstArg) && await isProjectDir(firstArg)) {

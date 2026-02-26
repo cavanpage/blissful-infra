@@ -69,7 +69,7 @@ async function checkDockerRunning(): Promise<boolean> {
   }
 }
 
-async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: PluginInstance[] = [], monitoring = "default"): Promise<void> {
+export async function generateDockerCompose(projectDir: string, name: string, database: string, plugins: PluginInstance[] = [], monitoring = "default"): Promise<void> {
   const services: Record<string, unknown> = {};
 
   // Kafka service
