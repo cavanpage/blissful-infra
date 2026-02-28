@@ -308,11 +308,11 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       ],
       volumes: [`${config.name}-mlflow-data:/mlflow`],
       healthcheck: {
-        test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/health"],
+        test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/api/2.0/mlflow/experiments/list')\" 2>/dev/null || exit 1"],
         interval: "10s",
-        timeout: "5s",
-        retries: 5,
-        start_period: "15s",
+        timeout: "10s",
+        retries: 10,
+        start_period: "30s",
       },
     };
 

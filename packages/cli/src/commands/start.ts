@@ -223,11 +223,11 @@ export async function generateDockerCompose(projectDir: string, name: string, da
       ],
       volumes: [`${name}-mlflow-data:/mlflow`],
       healthcheck: {
-        test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/health"],
+        test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/api/2.0/mlflow/experiments/list')\" 2>/dev/null || exit 1"],
         interval: "10s",
-        timeout: "5s",
-        retries: 5,
-        start_period: "15s",
+        timeout: "10s",
+        retries: 10,
+        start_period: "30s",
       },
     };
 
@@ -411,7 +411,7 @@ function generateYaml(obj: unknown, indent = 0): string {
   if (obj === undefined) return "null";
 
   if (typeof obj === "string") {
-    if (obj.includes(":") || obj.includes("#") || obj.startsWith("$")) {
+    if (obj.includes(":") || obj.includes("#") || obj.startsWith("$") || /^\d+$/.test(obj)) {
       return `"${obj}"`;
     }
     return obj;
