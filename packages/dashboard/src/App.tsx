@@ -525,6 +525,13 @@ function App() {
   const [editThresholdValues, setEditThresholdValues] = useState<Partial<AlertThreshold>>({})
   const [newThreshold, setNewThreshold] = useState<Partial<AlertThreshold> | null>(null)
 
+  // Loki state
+  const [lokiAvailable, setLokiAvailable] = useState(false)
+  const [lokiServices, setLokiServices] = useState<string[]>([])
+  const [lokiServiceFilter, setLokiServiceFilter] = useState<string>('all')
+  const [lokiLevelFilter, setLokiLevelFilter] = useState<string>('all')
+  const [lokiSearch, setLokiSearch] = useState('')
+
   const logsEndRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -586,6 +593,26 @@ function App() {
   const fetchLogs = async () => {
     if (!selectedProject) return
     try {
+      const params = new URLSearchParams()
+      if (lokiServiceFilter !== 'all') params.set('service', lokiServiceFilter)
+      if (lokiSearch) params.set('filter', lokiSearch)
+      params.set('limit', '300')
+      const lokiRes = await fetch(`/api/projects/${selectedProject.name}/logs/loki?${params}`)
+      if (lokiRes.ok) {
+        const data = await lokiRes.json()
+        if (data.source === 'loki') {
+          setLokiAvailable(true)
+          let entries: LogEntry[] = data.logs || []
+          if (lokiLevelFilter !== 'all') {
+            entries = entries.filter(l => detectLogLevel(l.message) === lokiLevelFilter)
+          }
+          setLogs(entries)
+          return
+        }
+      }
+    } catch { /* fall through */ }
+    setLokiAvailable(false)
+    try {
       const res = await fetch(`/api/projects/${selectedProject.name}/logs`)
       if (res.ok) {
         const data = await res.json()
@@ -594,6 +621,25 @@ function App() {
     } catch (e) {
       console.error('Failed to fetch logs:', e)
     }
+  }
+
+  const fetchLokiServices = async () => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.name}/logs/loki/services`)
+      if (res.ok) {
+        const data = await res.json()
+        setLokiServices(data.services || [])
+      }
+    } catch { /* ignore */ }
+  }
+
+  function detectLogLevel(msg: string): string {
+    const m = msg.toLowerCase()
+    if (m.includes('error') || m.includes('exception') || m.includes('fatal')) return 'error'
+    if (m.includes('warn')) return 'warn'
+    if (m.includes('debug') || m.includes('trace')) return 'debug'
+    return 'info'
   }
 
   const fetchHealth = async () => {
@@ -1033,11 +1079,12 @@ function App() {
 
   useEffect(() => {
     if (selectedProject) {
+      fetchLokiServices()
       fetchLogs()
       const interval = setInterval(fetchLogs, 3000)
       return () => clearInterval(interval)
     }
-  }, [selectedProject?.name])
+  }, [selectedProject?.name, lokiServiceFilter, lokiLevelFilter, lokiSearch])
 
   useEffect(() => {
     if (selectedProject && activeTab === 'metrics') {
@@ -1576,30 +1623,87 @@ function App() {
 
               {/* Tab Content */}
               {activeTab === 'logs' ? (
-                <div className="flex-1 overflow-auto p-4 font-mono text-sm">
-                  {logs.length === 0 ? (
-                    <div className="text-gray-500">No logs available. Start the project to see logs.</div>
-                  ) : (
-                    <div className="space-y-1">
-                      {logs.map((log, i) => (
-                        <div key={i} className="flex gap-2">
-                          <span className="text-gray-500 shrink-0">[{log.service}]</span>
-                          <span
-                            className={
-                              log.message.toLowerCase().includes('error')
-                                ? 'text-red-400'
-                                : log.message.toLowerCase().includes('warn')
-                                ? 'text-yellow-400'
-                                : 'text-gray-300'
-                            }
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Toolbar */}
+                  <div className="border-b border-gray-800 px-4 py-2 flex flex-wrap items-center gap-2">
+                    {/* Source badge */}
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${lokiAvailable ? 'bg-indigo-900 text-indigo-300' : 'bg-gray-700 text-gray-400'}`}>
+                      {lokiAvailable ? '⬡ Loki' : '🐳 Docker'}
+                    </span>
+
+                    {/* Service filter — only shown when Loki is available */}
+                    {lokiAvailable && (
+                      <select
+                        value={lokiServiceFilter}
+                        onChange={e => setLokiServiceFilter(e.target.value)}
+                        className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1"
+                      >
+                        <option value="all">All services</option>
+                        {lokiServices.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    )}
+
+                    {/* Level filter */}
+                    {lokiAvailable && (
+                      <div className="flex gap-1">
+                        {(['all', 'error', 'warn', 'info', 'debug'] as const).map(lvl => (
+                          <button
+                            key={lvl}
+                            onClick={() => setLokiLevelFilter(lvl)}
+                            className={`text-xs px-2 py-0.5 rounded font-medium ${
+                              lokiLevelFilter === lvl
+                                ? lvl === 'error' ? 'bg-red-900 text-red-300'
+                                  : lvl === 'warn' ? 'bg-yellow-900 text-yellow-300'
+                                  : lvl === 'debug' ? 'bg-gray-600 text-gray-300'
+                                  : 'bg-indigo-900 text-indigo-300'
+                                : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                            }`}
                           >
-                            {log.message}
-                          </span>
-                        </div>
-                      ))}
-                      <div ref={logsEndRef} />
-                    </div>
-                  )}
+                            {lvl}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Search */}
+                    <input
+                      type="text"
+                      value={lokiSearch}
+                      onChange={e => setLokiSearch(e.target.value)}
+                      placeholder="Filter logs..."
+                      className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1 w-44 focus:outline-none focus:border-indigo-500"
+                    />
+
+                    <span className="ml-auto text-xs text-gray-600">{logs.length} lines</span>
+                  </div>
+
+                  {/* Log stream */}
+                  <div className="flex-1 overflow-auto p-3 font-mono text-xs">
+                    {logs.length === 0 ? (
+                      <div className="text-gray-600 p-4 text-center">
+                        {lokiAvailable ? 'No logs match the current filters.' : 'No logs yet — start the project to see output.'}
+                      </div>
+                    ) : (
+                      <div className="space-y-px">
+                        {logs.map((log, i) => {
+                          const level = detectLogLevel(log.message)
+                          const levelColor = level === 'error' ? 'text-red-400' : level === 'warn' ? 'text-yellow-400' : level === 'debug' ? 'text-gray-500' : 'text-gray-300'
+                          const ts = log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
+                          return (
+                            <div key={i} className="flex gap-2 hover:bg-gray-800/50 px-1 rounded leading-5">
+                              {ts && <span className="text-gray-600 shrink-0 w-20">{ts}</span>}
+                              <span className={`shrink-0 w-14 font-semibold ${
+                                level === 'error' ? 'text-red-500' : level === 'warn' ? 'text-yellow-500' : level === 'debug' ? 'text-gray-600' : 'text-indigo-400'
+                              }`}>{level.toUpperCase()}</span>
+                              <span className="text-indigo-300 shrink-0 w-24 truncate">{log.service}</span>
+                              <span className={levelColor}>{log.message}</span>
+                            </div>
+                          )
+                        })}
+                        <div ref={logsEndRef} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : activeTab === 'chat' ? (
                 <div className="flex-1 flex flex-col">
