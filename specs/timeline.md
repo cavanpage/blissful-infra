@@ -1114,6 +1114,87 @@ redis-cache     1.0.0     npm       8091
 
 ---
 
+### 6.9 KubeAI Integration
+
+**Goal:** Add KubeAI as a Kubernetes-native AI inference layer — run open-weight LLMs (Llama, Mistral, Gemma) locally on a Kind cluster with an OpenAI-compatible API, so the `agent-service` plugin can target local models instead of the Anthropic API.
+
+#### Why KubeAI
+
+KubeAI is a Kubernetes operator that manages model servers as first-class resources. It exposes an OpenAI-compatible endpoint (`/v1/chat/completions`, `/v1/completions`) so no code changes are needed in existing agent services — just swap `AI_MODEL` and `OPENAI_BASE_URL` env vars. Fits directly into the Phase 6 cloud deployment story since the same manifests work on EKS/GKE/AKS.
+
+#### What Gets Added
+
+**CLI flag:**
+```
+blissful-infra start my-app --plugins agent-service --ai-runtime kubeai
+```
+Gated on `deploy_target` being `kind` or higher (not `local-only`) since KubeAI requires a running K8s cluster.
+
+**Cluster template (`packages/cli/templates/cluster/kubeai/`):**
+- `operator.yaml` — KubeAI operator install (Helm or kustomize)
+- `models/llama3.yaml` — `Model` CR for Llama 3.2 3B (small enough for dev machines)
+- `models/mistral.yaml` — `Model` CR for Mistral 7B
+- `gateway.yaml` — Service + Ingress exposing `/v1` on port 8080
+
+**Agent service env patch:**
+When `--ai-runtime kubeai`, override agent service env:
+```
+AI_PROVIDER: openai-compatible
+OPENAI_BASE_URL: http://kubeai/openai/v1
+AI_MODEL: llama-3.2-3b
+```
+
+**New CLI command:**
+```
+blissful-infra models list        # list available Model CRs and their status
+blissful-infra models pull <name> # pre-pull a model (starts the model pod)
+blissful-infra models status      # show inference pod health + GPU/CPU mode
+```
+
+**Dashboard integration:**
+- New "Models" card in the AI section showing model name, backend (CPU/GPU), ready status, and requests/sec from Prometheus scrape
+
+#### Locations
+
+| Action | Path |
+|--------|------|
+| CREATE | `packages/cli/templates/cluster/kubeai/operator.yaml` |
+| CREATE | `packages/cli/templates/cluster/kubeai/models/llama3.yaml` |
+| CREATE | `packages/cli/templates/cluster/kubeai/models/mistral.yaml` |
+| CREATE | `packages/cli/templates/cluster/kubeai/gateway.yaml` |
+| CREATE | `packages/cli/src/commands/models.ts` |
+| MODIFY | `packages/cli/src/commands/start.ts` — `--ai-runtime` flag + env patch |
+| MODIFY | `packages/cli/src/utils/ports.ts` — port 8080 for KubeAI gateway |
+
+#### Phase 6.9 Definition of Done
+```
+# Start a project with KubeAI inference
+$ blissful-infra start my-app --plugins agent-service --ai-runtime kubeai
+✓ KubeAI operator installed on Kind cluster
+✓ Model llama-3.2-3b pulled and ready
+✓ Agent service targeting http://kubeai/openai/v1
+
+# List available models
+$ blissful-infra models list
+NAME              BACKEND   STATUS   READY
+llama-3.2-3b      CPU       Running  ✓
+mistral-7b        CPU       Pending  …
+
+# Agent service responds using local LLM — no Anthropic key required
+$ curl http://localhost:8095/chat -d '{"message": "hello"}'
+{"reply": "Hi! I'm running on Llama 3.2 locally via KubeAI."}
+```
+
+**Success metrics:**
+- [ ] KubeAI operator installs cleanly on Kind cluster
+- [ ] `Model` CR for Llama 3.2 3B reaches `Ready` state on a dev machine (CPU mode)
+- [ ] Agent service hits `/v1/chat/completions` on KubeAI gateway with no code changes
+- [ ] `blissful-infra models list` shows model status
+- [ ] Dashboard shows Models card with ready/pending state
+- [ ] Existing `--ai-runtime anthropic` (default) unaffected
+
+---
+
 ## Phase 7: Autonomy
 
 **Goal:** Close the loop. Phases 1-6 gave blissful-infra eyes (observability), reflexes (resilience), and a brain (intelligence). Phase 7 gives it a voice — LangGraph-powered virtual employees that analyze your codebase and suggest changes for human review.
