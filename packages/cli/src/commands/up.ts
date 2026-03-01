@@ -122,6 +122,8 @@ async function startEnvironment(config: ProjectConfig, projectDir: string): Prom
       console.log(chalk.dim(`  • ${label}: `) + chalk.cyan(`http://localhost:${port}`));
     });
 
+    console.log(chalk.dim("  • Jaeger:      ") + chalk.cyan("http://localhost:16686"));
+    console.log(chalk.dim("  • Loki:        ") + chalk.cyan("http://localhost:3100"));
     if (config.monitoring === "prometheus") {
       console.log(chalk.dim("  • Prometheus:  ") + chalk.cyan("http://localhost:9090"));
       console.log(chalk.dim("  • Grafana:     ") + chalk.cyan("http://localhost:3001"));
@@ -220,6 +222,10 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       ports: ["8080:8080"],
       environment: {
         KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
+        OTEL_SERVICE_NAME: `${config.name}-backend`,
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317",
+        OTEL_TRACES_EXPORTER: "otlp",
+        JAVA_TOOL_OPTIONS: "-javaagent:/otel-agent.jar",
         ...(config.database === "postgres" || config.database === "postgres-redis"
           ? {
               DATABASE_URL: `postgresql://${config.name.replace(/-/g, "_")}:localdev@postgres:5432/${config.name.replace(/-/g, "_")}`,
@@ -231,6 +237,7 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       },
       depends_on: {
         kafka: { condition: "service_healthy" },
+        jaeger: { condition: "service_healthy" },
         ...(config.database === "postgres" || config.database === "postgres-redis"
           ? { postgres: { condition: "service_healthy" } }
           : {}),
@@ -397,6 +404,21 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       ],
     };
   });
+
+  // Jaeger — always-on distributed tracing
+  services.jaeger = {
+    image: "jaegertracing/all-in-one:1.57",
+    container_name: `${config.name}-jaeger`,
+    ports: ["16686:16686"],
+    environment: { COLLECTOR_OTLP_ENABLED: "true" },
+    healthcheck: {
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"],
+      interval: "10s",
+      timeout: "5s",
+      retries: 3,
+      start_period: "10s",
+    },
+  };
 
   // Loki + Promtail — always-on log aggregation
   services.loki = {

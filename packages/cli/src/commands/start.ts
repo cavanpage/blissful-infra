@@ -145,6 +145,10 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     ports: ["8080:8080"],
     environment: {
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9094",
+      OTEL_SERVICE_NAME: `${name}-backend`,
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317",
+      OTEL_TRACES_EXPORTER: "otlp",
+      JAVA_TOOL_OPTIONS: "-javaagent:/otel-agent.jar",
       ...(database === "postgres" || database === "postgres-redis"
         ? { DATABASE_URL: `postgresql://${name.replace(/-/g, "_")}:localdev@postgres:5432/${name.replace(/-/g, "_")}` }
         : {}),
@@ -154,6 +158,7 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     },
     depends_on: {
       kafka: { condition: "service_healthy" },
+      jaeger: { condition: "service_healthy" },
       ...(database === "postgres" || database === "postgres-redis"
         ? { postgres: { condition: "service_healthy" } }
         : {}),
@@ -310,6 +315,21 @@ export async function generateDockerCompose(projectDir: string, name: string, da
       ],
     };
   });
+
+  // Jaeger — always-on distributed tracing
+  services.jaeger = {
+    image: "jaegertracing/all-in-one:1.57",
+    container_name: `${name}-jaeger`,
+    ports: ["16686:16686"],
+    environment: { COLLECTOR_OTLP_ENABLED: "true" },
+    healthcheck: {
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"],
+      interval: "10s",
+      timeout: "5s",
+      retries: 3,
+      start_period: "10s",
+    },
+  };
 
   // Loki + Promtail — always-on log aggregation
   services.loki = {
@@ -763,6 +783,7 @@ docker-compose.override.yaml
       const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
       console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
     });
+    console.log(chalk.dim("  Jaeger:      ") + chalk.cyan("http://localhost:16686"));
     console.log(chalk.dim("  Loki:        ") + chalk.cyan("http://localhost:3100"));
     if (monitoring === "prometheus") {
       console.log(chalk.dim("  Prometheus:  ") + chalk.cyan("http://localhost:9090"));
