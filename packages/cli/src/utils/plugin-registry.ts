@@ -87,7 +87,7 @@ export const DATA_PLATFORM_REGISTRY: DataPlatformDef[] = [
     description: "Experiment tracking, model registry, and artifact store",
     category: "AI/ML",
     defaultPort: 5001,
-    healthPath: "/health",
+    healthPath: "/api/2.0/mlflow/experiments/list",
     color: "#3b82f6",
     ui: { path: "/", label: "Experiments" },
     enabledWith: ["ai-pipeline"],

@@ -95,6 +95,9 @@ export function getRequiredPorts(config: ProjectConfig): { port: number; service
     ports.push({ port: 8095 + i, service: `Agent Service (${p.instance})` });
   });
 
+  // Loki is always included
+  ports.push({ port: 3100, service: "Loki" });
+
   // Monitoring ports
   if (config.monitoring === "prometheus") {
     ports.push({ port: 9090, service: "Prometheus" });

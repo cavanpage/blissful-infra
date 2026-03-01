@@ -308,11 +308,11 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       ],
       volumes: [`${config.name}-mlflow-data:/mlflow`],
       healthcheck: {
-        test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/health"],
+        test: ["CMD-SHELL", "python -c 'import socket; socket.create_connection((\"localhost\", 5000), 3)' || exit 1"],
         interval: "10s",
-        timeout: "5s",
-        retries: 5,
-        start_period: "15s",
+        timeout: "10s",
+        retries: 10,
+        start_period: "30s",
       },
     };
 
@@ -398,6 +398,38 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
     };
   });
 
+  // Loki + Promtail — always-on log aggregation
+  services.loki = {
+    image: "grafana/loki:3.0.0",
+    container_name: `${config.name}-loki`,
+    ports: ["3100:3100"],
+    volumes: [
+      "./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro",
+      `${config.name}-loki-data:/loki`,
+    ],
+    command: ["-config.file=/etc/loki/local-config.yaml"],
+    healthcheck: {
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"],
+      interval: "10s",
+      timeout: "5s",
+      retries: 5,
+      start_period: "15s",
+    },
+  };
+
+  services.promtail = {
+    image: "grafana/promtail:3.0.0",
+    container_name: `${config.name}-promtail`,
+    volumes: [
+      "./loki/promtail-config.yaml:/etc/promtail/config.yaml:ro",
+      "/var/run/docker.sock:/var/run/docker.sock",
+    ],
+    command: ["-config.file=/etc/promtail/config.yaml"],
+    depends_on: {
+      loki: { condition: "service_healthy" },
+    },
+  };
+
   // Prometheus + Grafana (opt-in monitoring stack)
   if (config.monitoring === "prometheus") {
     services.prometheus = {
@@ -437,6 +469,7 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
       ],
       depends_on: {
         prometheus: { condition: "service_healthy" },
+        loki: { condition: "service_healthy" },
       },
       healthcheck: {
         test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"],
@@ -472,6 +505,7 @@ async function generateDockerCompose(config: ProjectConfig, projectDir: string):
   if (agentServices.length > 0) {
     volumes[`${config.name}-agent-state`] = null;
   }
+  volumes[`${config.name}-loki-data`] = null;
   if (config.monitoring === "prometheus") {
     volumes[`${config.name}-prometheus-data`] = null;
     volumes[`${config.name}-grafana-data`] = null;

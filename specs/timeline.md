@@ -1573,6 +1573,7 @@ Phase 2 (Pipeline)    Phase 3 (Observability)
 - [x] Dashboard displays real-time metrics and health status
 - [ ] Prometheus scrapes app metrics within 15s of startup
 - [ ] Grafana dashboards load with pre-populated panels (no manual config)
+- [x] Loki integration
 
 ### Phase 4 (Resilience)
 - [ ] Performance tests complete < 5 minutes
