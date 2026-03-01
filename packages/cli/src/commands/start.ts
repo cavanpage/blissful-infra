@@ -311,6 +311,38 @@ export async function generateDockerCompose(projectDir: string, name: string, da
     };
   });
 
+  // Loki + Promtail — always-on log aggregation
+  services.loki = {
+    image: "grafana/loki:3.0.0",
+    container_name: `${name}-loki`,
+    ports: ["3100:3100"],
+    volumes: [
+      "./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro",
+      `${name}-loki-data:/loki`,
+    ],
+    command: ["-config.file=/etc/loki/local-config.yaml"],
+    healthcheck: {
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"],
+      interval: "10s",
+      timeout: "5s",
+      retries: 5,
+      start_period: "15s",
+    },
+  };
+
+  services.promtail = {
+    image: "grafana/promtail:3.0.0",
+    container_name: `${name}-promtail`,
+    volumes: [
+      "./loki/promtail-config.yaml:/etc/promtail/config.yaml:ro",
+      "/var/run/docker.sock:/var/run/docker.sock",
+    ],
+    command: ["-config.file=/etc/promtail/config.yaml"],
+    depends_on: {
+      loki: { condition: "service_healthy" },
+    },
+  };
+
   // Prometheus + Grafana (opt-in monitoring stack)
   if (monitoring === "prometheus") {
     services.prometheus = {
@@ -350,6 +382,7 @@ export async function generateDockerCompose(projectDir: string, name: string, da
       ],
       depends_on: {
         prometheus: { condition: "service_healthy" },
+        loki: { condition: "service_healthy" },
       },
       healthcheck: {
         test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"],
@@ -385,6 +418,7 @@ export async function generateDockerCompose(projectDir: string, name: string, da
   if (agentServices.length > 0) {
     volumes[`${name}-agent-state`] = null;
   }
+  volumes[`${name}-loki-data`] = null;
   if (monitoring === "prometheus") {
     volumes[`${name}-prometheus-data`] = null;
     volumes[`${name}-grafana-data`] = null;
@@ -600,6 +634,14 @@ export const startCommand = new Command("start")
       }
     }
 
+    // Copy Loki config (always included)
+    scaffoldSpinner.text = "Copying Loki config...";
+    await copyTemplate("loki", path.join(projectDir, "loki"), {
+      projectName: name,
+      database,
+      deployTarget: "local-only",
+    });
+
     // Copy monitoring templates
     if (monitoring === "prometheus") {
       scaffoldSpinner.text = "Copying Prometheus + Grafana config...";
@@ -721,6 +763,7 @@ docker-compose.override.yaml
       const label = agentServicesOut.length > 1 ? `Agent (${plugin.instance})` : "Agent Service";
       console.log(chalk.dim(`  ${label}: `.padEnd(16)) + chalk.cyan(`http://localhost:${port}`));
     });
+    console.log(chalk.dim("  Loki:        ") + chalk.cyan("http://localhost:3100"));
     if (monitoring === "prometheus") {
       console.log(chalk.dim("  Prometheus:  ") + chalk.cyan("http://localhost:9090"));
       console.log(chalk.dim("  Grafana:     ") + chalk.cyan("http://localhost:3001"));
