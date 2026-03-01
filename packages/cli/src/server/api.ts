@@ -259,6 +259,72 @@ export function createApiServer(workingDir: string, port = 3002) {
         return;
       }
 
+      // GET /api/projects/:name/logs/loki - Proxy to Loki query_range, returns LogEntry[]
+      const lokiLogsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/loki$/);
+      if (req.method === "GET" && lokiLogsMatch) {
+        const projectName = lokiLogsMatch[1];
+        const lokiHost = DOCKER_MODE ? "loki" : "localhost";
+        const serviceFilter = url.searchParams.get("service");
+        const textFilter = url.searchParams.get("filter");
+        const limit = url.searchParams.get("limit") || "200";
+
+        let logqlQuery = `{project="${projectName}"${serviceFilter ? `, service="${serviceFilter}"` : ""}}`;
+        if (textFilter) logqlQuery += ` |= \`${textFilter}\``;
+
+        const nowNs = BigInt(Date.now()) * 1_000_000n;
+        const startNs = nowNs - 3_600_000_000_000n; // 1 hour ago
+
+        const lokiUrl = new URL(`http://${lokiHost}:3100/loki/api/v1/query_range`);
+        lokiUrl.searchParams.set("query", logqlQuery);
+        lokiUrl.searchParams.set("limit", limit);
+        lokiUrl.searchParams.set("start", startNs.toString());
+        lokiUrl.searchParams.set("end", nowNs.toString());
+        lokiUrl.searchParams.set("direction", "forward");
+
+        try {
+          const lokiRes = await fetch(lokiUrl.toString(), { signal: AbortSignal.timeout(5000) });
+          if (!lokiRes.ok) throw new Error(`Loki ${lokiRes.status}`);
+          const data = await lokiRes.json() as { data?: { result?: Array<{ stream: Record<string, string>; values: [string, string][] }> } };
+          const logs: Array<{ timestamp: string; service: string; message: string }> = [];
+          for (const stream of data.data?.result ?? []) {
+            const service = stream.stream?.service || stream.stream?.container || "unknown";
+            for (const [ts, msg] of stream.values ?? []) {
+              logs.push({ timestamp: new Date(Number(BigInt(ts) / 1_000_000n)).toISOString(), service, message: msg });
+            }
+          }
+          logs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ logs, source: "loki" }));
+        } catch {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ logs: [], source: "loki", error: "Loki unavailable" }));
+        }
+        return;
+      }
+
+      // GET /api/projects/:name/logs/loki/services - Available service labels from Loki
+      const lokiServicesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/loki\/services$/);
+      if (req.method === "GET" && lokiServicesMatch) {
+        const projectName = lokiServicesMatch[1];
+        const lokiHost = DOCKER_MODE ? "loki" : "localhost";
+        try {
+          const nowNs = BigInt(Date.now()) * 1_000_000n;
+          const startNs = nowNs - 3_600_000_000_000n;
+          const lokiUrl = new URL(`http://${lokiHost}:3100/loki/api/v1/label/service/values`);
+          lokiUrl.searchParams.set("query", `{project="${projectName}"}`);
+          lokiUrl.searchParams.set("start", startNs.toString());
+          lokiUrl.searchParams.set("end", nowNs.toString());
+          const lokiRes = await fetch(lokiUrl.toString(), { signal: AbortSignal.timeout(3000) });
+          const data = await lokiRes.json() as { data?: string[] };
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ services: data.data ?? [] }));
+        } catch {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ services: [] }));
+        }
+        return;
+      }
+
       // GET /api/projects/:name/logs/search - Search stored logs
       const logsSearchMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/logs\/search$/);
       if (req.method === "GET" && logsSearchMatch) {
