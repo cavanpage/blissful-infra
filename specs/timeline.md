@@ -824,8 +824,8 @@ Created PR #142: fix/bounded-greeting-cache
 **Location:** `packages/cli/templates/cluster/vault/`
 
 #### 6.6.3 Distributed Tracing (Jaeger)
-- [ ] Jaeger all-in-one deployment
-- [ ] OpenTelemetry SDK in templates
+- [x] Jaeger all-in-one deployment
+- [x] OpenTelemetry SDK in templates
 - [ ] Trace correlation in dashboard
 - [ ] Span analysis in agent
 

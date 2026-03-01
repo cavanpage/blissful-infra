@@ -1241,6 +1241,14 @@ async function checkServiceHealth(projectDir: string): Promise<HealthResponse> {
     healthChecks.push({ name: plugin.instance, url: `${url}/health`, port });
   });
 
+  // Jaeger health check (always-on)
+  const jaegerUrl = DOCKER_MODE ? "http://jaeger:16686" : "http://localhost:16686";
+  healthChecks.push({ name: "jaeger", url: `${jaegerUrl}/`, port: 16686 });
+
+  // Loki health check (always-on)
+  const lokiUrl = DOCKER_MODE ? "http://loki:3100" : "http://localhost:3100";
+  healthChecks.push({ name: "loki", url: `${lokiUrl}/ready`, port: 3100 });
+
   // Prometheus + Grafana health checks
   if (config?.monitoring === "prometheus") {
     const promUrl = DOCKER_MODE ? "http://prometheus:9090" : "http://localhost:9090";

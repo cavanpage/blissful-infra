@@ -95,7 +95,8 @@ export function getRequiredPorts(config: ProjectConfig): { port: number; service
     ports.push({ port: 8095 + i, service: `Agent Service (${p.instance})` });
   });
 
-  // Loki is always included
+  // Jaeger and Loki are always included
+  ports.push({ port: 16686, service: "Jaeger" });
   ports.push({ port: 3100, service: "Loki" });
 
   // Monitoring ports
