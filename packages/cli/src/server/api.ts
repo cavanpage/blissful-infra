@@ -1697,27 +1697,34 @@ async function getPipelineStatus(
 
   // Try to fetch last build from Jenkins API
   let lastRun: PipelineStatus["lastRun"];
-  let resolvedJobPath = `job/${projectName}`; // default, may be updated below
+  // Jobs are created in blissful-projects folder by `jenkins add-project`
+  let resolvedJobPath = `job/blissful-projects/job/${projectName}`;
+  let jenkinsReachable = false;
   if (hasJenkinsfile) {
     try {
       const authHeader = "Basic " + Buffer.from("admin:admin").toString("base64");
 
-      // Try folder path first, then root
+      // Try folder path first (standard), then root as fallback
       let jobApiUrl = `http://${jenkinsApiHost}:8081/job/blissful-projects/job/${projectName}/lastBuild/api/json`;
       let resp = await fetch(jobApiUrl, {
         headers: { Authorization: authHeader },
         signal: AbortSignal.timeout(3000),
       });
 
-      if (resp.ok) {
-        resolvedJobPath = `job/blissful-projects/job/${projectName}`;
-      } else {
+      if (!resp.ok) {
+        // Fallback: job created at root level
         jobApiUrl = `http://${jenkinsApiHost}:8081/job/${projectName}/lastBuild/api/json`;
         resp = await fetch(jobApiUrl, {
           headers: { Authorization: authHeader },
           signal: AbortSignal.timeout(3000),
         });
+        if (resp.ok || resp.status === 404) {
+          // Jenkins is reachable even if job doesn't exist yet
+          resolvedJobPath = `job/${projectName}`;
+        }
       }
+
+      jenkinsReachable = true;
 
       if (resp.ok) {
         const build = (await resp.json()) as {
@@ -1771,11 +1778,11 @@ async function getPipelineStatus(
         };
       }
     } catch {
-      // Jenkins not reachable — return without lastRun
+      // Jenkins not reachable — link will be hidden
     }
   }
 
-  const jenkinsUrl = hasJenkinsfile
+  const jenkinsUrl = (hasJenkinsfile && jenkinsReachable)
     ? `http://${jenkinsBrowserHost}:8081/${resolvedJobPath}`
     : undefined;
 
