@@ -9,7 +9,7 @@ import { copyTemplate, copyPlugin, getAvailableTemplates, getAvailablePlugins } 
 import { checkPorts, getRequiredPorts } from "../utils/ports.js";
 import { toExecError } from "../utils/errors.js";
 import { parsePluginSpecs, serializePluginSpecs, type PluginInstance } from "../utils/config.js";
-import { isJenkinsRunning, startJenkins } from "./jenkins.js";
+import { isJenkinsRunning, startJenkins, registerProjectWithJenkins } from "./jenkins.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -743,6 +743,13 @@ docker-compose.override.yaml
         stdio: "pipe",
       });
       startSpinner.succeed("Containers started");
+
+      // Register project with Jenkins (best-effort, non-fatal)
+      try {
+        await registerProjectWithJenkins(projectDir, name);
+      } catch {
+        // Non-fatal — user can run `jenkins add-project` manually
+      }
     } catch (error) {
       startSpinner.fail("Failed to start containers");
       const execError = toExecError(error);
