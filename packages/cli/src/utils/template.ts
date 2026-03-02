@@ -157,7 +157,7 @@ function replaceVariables(content: string, variables: TemplateVariables): string
 
   // Phase 2 variables (with defaults)
   result = result
-    .replace(/\{\{REGISTRY_URL\}\}/g, variables.registryUrl || "localhost:5000")
+    .replace(/\{\{REGISTRY_URL\}\}/g, variables.registryUrl || "localhost:5050")
     .replace(/\{\{NAMESPACE\}\}/g, variables.namespace || variables.projectName)
     .replace(/\{\{ENVIRONMENT\}\}/g, variables.environment || "local");
 

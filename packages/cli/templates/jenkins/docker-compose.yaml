@@ -27,7 +27,7 @@ services:
     image: registry:2
     container_name: blissful-registry
     ports:
-      - "5000:5000"
+      - "5050:5000"
     volumes:
       - blissful-registry-data:/var/lib/registry
     restart: unless-stopped
