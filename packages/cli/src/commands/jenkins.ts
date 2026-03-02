@@ -209,43 +209,20 @@ async function jenkinsStatus(): Promise<void> {
   console.log();
 }
 
-async function addProject(projectName: string): Promise<void> {
-  // Find project directory
-  const projectDir = path.join(process.cwd(), projectName);
-  const configPath = path.join(projectDir, "blissful-infra.yaml");
-
-  try {
-    await fs.access(configPath);
-  } catch {
-    console.error(chalk.red(`Project '${projectName}' not found.`));
-    console.error(chalk.dim("Make sure you're in the parent directory of the project."));
-    process.exit(1);
+async function findJenkinsfileScriptPath(projectDir: string): Promise<string | null> {
+  for (const loc of ["Jenkinsfile", "backend/Jenkinsfile"]) {
+    try {
+      await fs.access(path.join(projectDir, loc));
+      return loc;
+    } catch {
+      // try next
+    }
   }
+  return null;
+}
 
-  // Check if Jenkinsfile exists
-  const jenkinsfilePath = path.join(projectDir, "Jenkinsfile");
-  try {
-    await fs.access(jenkinsfilePath);
-  } catch {
-    console.error(chalk.red(`No Jenkinsfile found in ${projectName}.`));
-    console.error(chalk.dim("Create a project with kubernetes deploy target to get a Jenkinsfile:"));
-    console.error(chalk.cyan("  blissful-infra create --deploy kubernetes"));
-    process.exit(1);
-  }
-
-  // Check if Jenkins is running
-  if (!(await isJenkinsRunning())) {
-    console.error(chalk.red("Jenkins is not running."));
-    console.error(chalk.dim("Start Jenkins first:"));
-    console.error(chalk.cyan("  blissful-infra jenkins start"));
-    process.exit(1);
-  }
-
-  const spinner = ora(`Adding ${projectName} to Jenkins...`).start();
-
-  try {
-    // Create job XML
-    const jobXml = `<?xml version='1.1' encoding='UTF-8'?>
+function buildJobXml(projectDir: string, projectName: string, scriptPath: string): string {
+  return `<?xml version='1.1' encoding='UTF-8'?>
 <flow-definition plugin="workflow-job">
   <description>Pipeline for ${projectName} - managed by blissful-infra</description>
   <keepDependencies>false</keepDependencies>
@@ -277,54 +254,103 @@ async function addProject(projectName: string): Promise<void> {
       <submoduleCfg class="empty-list"/>
       <extensions/>
     </scm>
-    <scriptPath>Jenkinsfile</scriptPath>
+    <scriptPath>${scriptPath}</scriptPath>
     <lightweight>true</lightweight>
   </definition>
   <triggers/>
   <disabled>false</disabled>
 </flow-definition>`;
+}
 
-    // Check if job already exists
-    const checkResponse = await fetch(`http://localhost:8081/job/blissful-projects/job/${projectName}/api/json`, {
-      headers: {
-        Authorization: "Basic " + Buffer.from("admin:admin").toString("base64"),
+/**
+ * Register a project with Jenkins. Safe to call from other commands —
+ * no process.exit, silently skips if no Jenkinsfile is found.
+ */
+export async function registerProjectWithJenkins(projectDir: string, projectName: string): Promise<void> {
+  const scriptPath = await findJenkinsfileScriptPath(projectDir);
+  if (!scriptPath) return;
+
+  const auth = "Basic " + Buffer.from("admin:admin").toString("base64");
+  const jobXml = buildJobXml(projectDir, projectName, scriptPath);
+
+  // Skip if already registered
+  const checkResp = await fetch(
+    `http://localhost:8081/job/blissful-projects/job/${projectName}/api/json`,
+    { headers: { Authorization: auth }, signal: AbortSignal.timeout(5000) },
+  );
+  if (checkResp.ok) return;
+
+  // Try the blissful-projects folder first, fall back to root
+  const createResp = await fetch(
+    `http://localhost:8081/job/blissful-projects/createItem?name=${projectName}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/xml", Authorization: auth },
+      body: jobXml,
+    },
+  );
+
+  if (!createResp.ok) {
+    const fallbackResp = await fetch(
+      `http://localhost:8081/createItem?name=${projectName}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/xml", Authorization: auth },
+        body: jobXml,
       },
-    });
+    );
+    if (!fallbackResp.ok) {
+      throw new Error(`Failed to create Jenkins job: ${fallbackResp.status}`);
+    }
+  }
+}
 
-    if (checkResponse.ok) {
+async function addProject(projectName: string): Promise<void> {
+  // Find project directory
+  const projectDir = path.join(process.cwd(), projectName);
+  const configPath = path.join(projectDir, "blissful-infra.yaml");
+
+  try {
+    await fs.access(configPath);
+  } catch {
+    console.error(chalk.red(`Project '${projectName}' not found.`));
+    console.error(chalk.dim("Make sure you're in the parent directory of the project."));
+    process.exit(1);
+  }
+
+  // Check if Jenkinsfile exists (root or backend/)
+  const scriptPath = await findJenkinsfileScriptPath(projectDir);
+  if (!scriptPath) {
+    console.error(chalk.red(`No Jenkinsfile found in ${projectName}.`));
+    console.error(chalk.dim("The spring-boot backend template includes a Jenkinsfile automatically."));
+    process.exit(1);
+  }
+
+  // Check if Jenkins is running
+  if (!(await isJenkinsRunning())) {
+    console.error(chalk.red("Jenkins is not running."));
+    console.error(chalk.dim("Start Jenkins first:"));
+    console.error(chalk.cyan("  blissful-infra jenkins start"));
+    process.exit(1);
+  }
+
+  const spinner = ora(`Adding ${projectName} to Jenkins...`).start();
+
+  try {
+    const checkResp = await fetch(
+      `http://localhost:8081/job/blissful-projects/job/${projectName}/api/json`,
+      { headers: { Authorization: "Basic " + Buffer.from("admin:admin").toString("base64") } },
+    );
+
+    if (checkResp.ok) {
       spinner.info(`Project ${projectName} already exists in Jenkins`);
     } else {
-      // Create job in blissful-projects folder
-      const createResponse = await fetch(`http://localhost:8081/job/blissful-projects/createItem?name=${projectName}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/xml",
-          Authorization: "Basic " + Buffer.from("admin:admin").toString("base64"),
-        },
-        body: jobXml,
-      });
-
-      if (!createResponse.ok) {
-        // Try creating without folder (folder might not exist yet)
-        const fallbackResponse = await fetch(`http://localhost:8081/createItem?name=${projectName}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/xml",
-            Authorization: "Basic " + Buffer.from("admin:admin").toString("base64"),
-          },
-          body: jobXml,
-        });
-
-        if (!fallbackResponse.ok) {
-          throw new Error(`Failed to create job: ${fallbackResponse.status}`);
-        }
-      }
-
+      await registerProjectWithJenkins(projectDir, projectName);
       spinner.succeed(`Added ${projectName} to Jenkins`);
     }
 
     console.log();
-    console.log(chalk.dim("Job URL:"), chalk.cyan(`http://localhost:8081/job/${projectName}`));
+    console.log(chalk.dim("Job URL:"), chalk.cyan(`http://localhost:8081/job/blissful-projects/job/${projectName}`));
     console.log();
     console.log(chalk.dim("To run the pipeline:"));
     console.log(chalk.cyan(`  blissful-infra jenkins build ${projectName}`));
