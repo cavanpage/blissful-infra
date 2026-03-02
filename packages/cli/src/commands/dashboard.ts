@@ -115,7 +115,7 @@ export async function dashboardAction(opts: { port?: string; open?: boolean; dir
   console.log(chalk.dim("  Projects:   ") + chalk.cyan(workingDir));
   if (jenkinsStarted) {
     console.log(chalk.dim("  Jenkins:    ") + chalk.cyan("http://localhost:8081") + chalk.dim(" (admin/admin)"));
-    console.log(chalk.dim("  Registry:   ") + chalk.cyan("localhost:5000"));
+    console.log(chalk.dim("  Registry:   ") + chalk.cyan("localhost:5050"));
   }
   console.log();
   console.log(chalk.dim("Press Ctrl+C to stop"));

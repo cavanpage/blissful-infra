@@ -3,7 +3,7 @@ import ora from "ora";
 import { execa } from "execa";
 import type { ProjectConfig } from "./config.js";
 
-const LOCAL_REGISTRY_PORT = 5000;
+const LOCAL_REGISTRY_PORT = 5050;
 const LOCAL_REGISTRY_NAME = "blissful-registry";
 
 /**

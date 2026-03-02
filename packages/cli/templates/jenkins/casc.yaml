@@ -19,7 +19,7 @@ jenkins:
     - envVars:
         env:
           - key: "REGISTRY_URL"
-            value: "localhost:5000"
+            value: "localhost:5050"
           - key: "DOCKER_HOST"
             value: "unix:///var/run/docker.sock"
 

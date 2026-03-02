@@ -143,7 +143,7 @@ export async function startJenkins(opts: JenkinsOptions): Promise<void> {
   console.log(chalk.dim("Username:"), "admin");
   console.log(chalk.dim("Password:"), "admin");
   console.log();
-  console.log(chalk.dim("Registry:"), chalk.cyan("localhost:5000"));
+  console.log(chalk.dim("Registry:"), chalk.cyan("localhost:5050"));
   console.log();
   console.log(chalk.dim("To register a project:"));
   console.log(chalk.cyan("  blissful-infra jenkins add-project <project-name>"));
@@ -195,7 +195,7 @@ async function jenkinsStatus(): Promise<void> {
       if (stdout.includes("Up")) {
         console.log();
         console.log(chalk.green("●"), "Registry is running");
-        console.log(chalk.dim("URL:"), chalk.cyan("localhost:5000"));
+        console.log(chalk.dim("URL:"), chalk.cyan("localhost:5050"));
       }
     } catch {
       // Registry not running
