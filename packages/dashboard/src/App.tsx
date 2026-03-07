@@ -1466,6 +1466,20 @@ function App() {
                   <div className="mt-1 text-xs text-gray-500">
                     {project.type} {project.backend && `/ ${project.backend}`}
                   </div>
+                  {project.services.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
+                      {project.services.map((service) => (
+                        <span
+                          key={service.name}
+                          className="flex items-center gap-1 text-xs text-gray-400"
+                          title={`${service.name}: ${service.status}${service.port ? ` (:${service.port})` : ''}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot(service.status)}`} />
+                          {service.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
