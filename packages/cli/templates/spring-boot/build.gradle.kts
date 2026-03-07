@@ -33,6 +33,8 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus")
 {{#IF_POSTGRES}}
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.flywaydb:flyway-core")
+    implementation("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
 {{/IF_POSTGRES}}
 {{#IF_REDIS}}

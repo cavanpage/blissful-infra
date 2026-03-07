@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { ChatWindow } from '@/components/ChatWindow'
 import { LiveFeed } from '@/components/LiveFeed'
+import { ProductTable } from '@/components/ProductTable'
 
 interface HealthResponse {
   status: string
@@ -92,6 +93,9 @@ export default function HomePage() {
           </Card.Content>
         </Card>
       </div>
+
+      {/* Products — loaded from Postgres via Flyway-seeded data */}
+      <ProductTable />
 
       {/* Side-by-side: WebSocket (bidirectional chat) vs SSE (server-push event feed) */}
       <div className="grid gap-4 md:grid-cols-2">
