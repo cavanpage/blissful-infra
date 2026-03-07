@@ -48,7 +48,7 @@ interface StartOptions {
 const DEFAULTS = {
   backend: "spring-boot",
   frontend: "react-vite",
-  database: "none",
+  database: "postgres",
 };
 
 async function openBrowser(url: string): Promise<void> {
@@ -544,7 +544,7 @@ export const startCommand = new Command("start")
   .argument("<name>", "Project name")
   .option("-b, --backend <backend>", `Backend framework (default: ${DEFAULTS.backend})`)
   .option("-f, --frontend <frontend>", `Frontend framework (default: ${DEFAULTS.frontend})`)
-  .option("-d, --database <database>", `Database (none, postgres, redis, postgres-redis)`)
+  .option("-d, --database <database>", `Database (none, postgres, redis, postgres-redis) (default: postgres)`)
   .option("-l, --link", "Link to templates instead of copying (for template development)")
   .option("-p, --plugins <plugins>", "Comma-separated plugins (e.g. ai-pipeline)")
   .option("--no-monitoring", "Disable Prometheus + Grafana monitoring stack")
