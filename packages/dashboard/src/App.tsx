@@ -62,7 +62,7 @@ interface Project {
 
 interface Service {
   name: string
-  status: 'running' | 'stopped' | 'starting'
+  status: 'running' | 'stopped' | 'starting' | 'unhealthy'
   port?: number
 }
 
@@ -1349,6 +1349,8 @@ function App() {
         return 'bg-green-400'
       case 'stopped':
         return 'bg-red-400'
+      case 'unhealthy':
+        return 'bg-orange-400'
       case 'starting':
         return 'bg-yellow-400'
       default:
