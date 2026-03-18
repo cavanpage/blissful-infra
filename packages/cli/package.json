@@ -1,6 +1,6 @@
 {
   "name": "@blissful-infra/cli",
-  "version": "0.1.2",
+  "version": "0.2.1",
   "description": "CLI for blissful-infra - infrastructure that thinks for itself",
   "type": "module",
   "bin": {
