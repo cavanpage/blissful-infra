@@ -40,7 +40,15 @@ class EventWebSocketHandler : TextWebSocketHandler() {
     private val objectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
-        val name = "User-${session.id.take(4)}"
+        val cookieName = session.handshakeHeaders["Cookie"]
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("chat_name=") }
+            ?.removePrefix("chat_name=")
+            ?.trim()
+            ?.take(20)
+            ?.ifBlank { null }
+        val name = cookieName ?: "User-${session.id.take(4)}"
         sessions[session.id] = session
         names[session.id] = name
         logger.info("WebSocket connected: {} ({}), total: {}", name, session.id, sessions.size)
