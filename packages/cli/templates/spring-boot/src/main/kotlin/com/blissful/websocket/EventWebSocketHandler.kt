@@ -1,6 +1,7 @@
 package com.blissful.websocket
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.web.socket.CloseStatus
@@ -28,7 +29,7 @@ class EventWebSocketHandler : TextWebSocketHandler() {
     // sessionId → display name (e.g. "User-a1b2")
     private val names = ConcurrentHashMap<String, String>()
 
-    private val objectMapper = ObjectMapper()
+    private val objectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     override fun afterConnectionEstablished(session: WebSocketSession) {
         val name = "User-${session.id.take(4)}"
