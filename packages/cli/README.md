@@ -1,5 +1,7 @@
 # @blissful-infra/cli
 
+**[blissful-infra.com](https://blissful-infra.com)** — full docs and guides
+
 One command creates and runs a full-stack app with CI/CD, observability, and an AI agent — no cloud required.
 
 ```bash
