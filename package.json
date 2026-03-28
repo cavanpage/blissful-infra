@@ -28,9 +28,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w packages/cli && npm run build -w packages/dashboard",
-    "build:cli": "npm run build -w packages/cli",
-    "build:dashboard": "npm run build -w packages/dashboard",
+    "build": "npm run build -w packages/shared && npm run build -w packages/cli && npm run build -w packages/dashboard",
+    "build:shared": "npm run build -w packages/shared",
+    "build:cli": "npm run build -w packages/shared && npm run build -w packages/cli",
+    "build:dashboard": "npm run build -w packages/shared && npm run build -w packages/dashboard",
     "dev": "./dev.sh",
     "test": "echo 'No tests configured yet'"
   },
