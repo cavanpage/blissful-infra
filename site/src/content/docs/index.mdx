@@ -1,10 +1,10 @@
 ---
 title: Blissful Infra
-description: Full-stack infrastructure orchestration for modern development teams
+description: A production-grade sandbox on your laptop — full-stack app with CI/CD, observability, and an AI agent. One command.
 template: splash
 hero:
-  tagline: Full-stack infrastructure orchestration for modern development teams
-  title: Enterprise infrastructure on your laptop
+  tagline: A production-grade sandbox on your laptop. One command.
+  title: Ship-ready infrastructure you can actually play with
   actions:
     - text: Get Started
       link: /getting-started
@@ -18,7 +18,7 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-One command creates and runs a full-stack app with CI/CD, observability, and an AI agent. No cloud required.
+One command spins up a complete production-grade stack — backend, frontend, databases, message bus, tracing, metrics, CI/CD, and a web dashboard — running entirely on your laptop. Experiment freely. Tear it down. Spin it back up. No cloud account, no billing surprise, no YAML to write.
 
 ```bash
 npm install -g @blissful-infra/cli
@@ -30,17 +30,17 @@ Your app is running at `http://localhost:3000` in under a minute — backend, fr
 ## Features
 
 <CardGrid>
-  <Card title="Infrastructure Orchestration" icon="setting">
-    One command scaffolds and boots a complete Docker Compose stack: Spring Boot API, React frontend, Kafka, Postgres, Redis, Jaeger tracing, Prometheus, Grafana, Loki, and nginx — all wired together automatically.
+  <Card title="Sandbox in seconds" icon="setting">
+    One command scaffolds and boots a complete Docker Compose stack: Spring Boot API, React frontend, Kafka, Postgres, Redis, Jaeger tracing, Prometheus, Grafana, Loki, and nginx — isolated on your machine, ready to break and rebuild.
   </Card>
   <Card title="Full-Stack Templates" icon="document">
-    Choose from battle-tested templates for your backend (Spring Boot, FastAPI, Express, Go Chi) and frontend (React+Vite, Next.js). Templates use variable substitution so generated code is project-specific from the start.
+    Choose from battle-tested templates for your backend (Spring Boot, FastAPI, Express, Go Chi) and frontend (React+Vite, Next.js). Each generated project is immediately yours — modify, delete, and recreate as many times as you want.
   </Card>
   <Card title="AI-Powered Development" icon="star">
-    A built-in AI debugging agent connects to your running stack via MCP. Ask Claude to diagnose errors, check service health, read logs, trigger builds, and deploy — without leaving your chat window.
+    A built-in AI debugging agent connects to your running sandbox via MCP. Ask Claude to diagnose errors, check service health, read logs, trigger builds, and deploy — without leaving your chat window.
   </Card>
   <Card title="Developer Dashboard" icon="laptop">
-    A local web UI gives you real-time log streaming, CPU/memory/latency metrics, Jenkins pipeline status, environment management, and AI chat in one place at `http://localhost:3002`.
+    A local web UI gives you real-time log streaming, CPU/memory/latency metrics, Jenkins pipeline status, deployment history, and AI chat in one place at `http://localhost:3002`. Your own mission control, running offline.
   </Card>
 </CardGrid>
 
@@ -63,9 +63,11 @@ Running `blissful-infra start my-app` scaffolds a complete project directory and
 | Loki        | localhost:3100             | Structured log aggregation           |
 | Registry    | localhost:5050             | Local Docker image registry          |
 
-## No cloud required
+## Your sandbox, your rules
 
-blissful-infra runs entirely on your laptop. Docker Desktop is the only external dependency. There are no cloud accounts to configure, no Kubernetes clusters to provision, and no YAML to hand-write. Everything that would normally require a DevOps team is handled for you.
+blissful-infra runs entirely on your laptop. Docker Desktop is the only external dependency. There are no cloud accounts to set up, no Kubernetes clusters to provision, no YAML to hand-write, and no per-hour costs ticking up while you work.
+
+Spin up a project, experiment with the architecture, blow it away, and start fresh. The entire stack is isolated, reproducible, and disposable on demand. Everything that would normally require a DevOps team — service discovery, observability wiring, CI/CD pipelines, database migrations — is handled for you, and it all runs offline.
 
 ## Coming soon: Blissful Infra Cloud
 

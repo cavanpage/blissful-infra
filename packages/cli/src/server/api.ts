@@ -60,6 +60,17 @@ import {
   loadDeployments,
   type DeploymentRecord,
 } from "../utils/deployment-storage.js";
+import {
+  type Service,
+  type ServiceHealth,
+  type HealthResponse,
+  type ProjectStatus,
+  type ContainerMetrics,
+  type HttpMetrics,
+  type ProjectMetrics,
+  CreateDeploymentRequestSchema,
+  UpdateDeploymentRequestSchema,
+} from "@blissful-infra/shared";
 
 const SYSTEM_PROMPT = `You are a helpful infrastructure assistant for the blissful-infra project. You help developers understand their application logs, diagnose issues, and suggest improvements.
 
@@ -71,68 +82,6 @@ When analyzing logs or issues:
 
 Keep responses concise and focused. Use markdown formatting for code blocks and lists.`;
 
-interface Service {
-  name: string;
-  status: "running" | "stopped" | "starting" | "unhealthy";
-  port?: number;
-}
-
-interface ContainerMetrics {
-  name: string;
-  cpuPercent: number;
-  memoryUsage: number;
-  memoryLimit: number;
-  memoryPercent: number;
-  networkRx: number;
-  networkTx: number;
-}
-
-interface ProjectMetrics {
-  containers: ContainerMetrics[];
-  httpMetrics?: HttpMetrics;
-  timestamp: number;
-}
-
-interface HttpMetrics {
-  totalRequests: number;
-  requestsPerSecond: number;
-  avgResponseTime: number;
-  // Latency percentiles (in milliseconds)
-  p50Latency?: number;
-  p95Latency?: number;
-  p99Latency?: number;
-  // Error metrics
-  errorCount?: number;
-  errorRate?: number;
-  // Status code breakdown
-  status2xx?: number;
-  status4xx?: number;
-  status5xx?: number;
-}
-
-interface ServiceHealth {
-  name: string;
-  status: "healthy" | "unhealthy" | "unknown";
-  responseTimeMs?: number;
-  lastChecked: number;
-  details?: string;
-}
-
-interface HealthResponse {
-  services: ServiceHealth[];
-  timestamp: number;
-}
-
-interface ProjectStatus {
-  name: string;
-  path: string;
-  status: "running" | "stopped" | "unknown";
-  type: string;
-  backend?: string;
-  frontend?: string;
-  database?: string;
-  services: Service[];
-}
 
 const DOCKER_MODE = process.env.DOCKER_MODE === "true";
 
@@ -835,13 +784,13 @@ export function createApiServer(workingDir: string, port = 3002) {
         const projectName = deploymentsMatch[1];
         const projectDir = path.join(workingDir, projectName);
         const body = await readBody(req);
-        const { gitSha, status = "running" } = JSON.parse(body || "{}");
-
-        if (!gitSha) {
+        const parsed = CreateDeploymentRequestSchema.safeParse(JSON.parse(body || "{}"));
+        if (!parsed.success) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Missing gitSha" }));
+          res.end(JSON.stringify({ error: "Invalid request", details: parsed.error.flatten() }));
           return;
         }
+        const { gitSha, status = "running" } = parsed.data;
 
         const now = Date.now();
         const id = `deploy-${now}`;
@@ -853,7 +802,7 @@ export function createApiServer(workingDir: string, port = 3002) {
           timestamp: now,
           projectName,
           gitSha,
-          status: status as DeploymentRecord["status"],
+          status,
           regression: false,
           ...(latencyBefore !== null ? { latencyBefore } : {}),
           jaegerTraceUrl,
@@ -872,7 +821,13 @@ export function createApiServer(workingDir: string, port = 3002) {
         const deploymentId = deploymentByIdMatch[2];
         const projectDir = path.join(workingDir, projectName);
         const body = await readBody(req);
-        const { status, latencyAfter } = JSON.parse(body || "{}");
+        const parsed = UpdateDeploymentRequestSchema.safeParse(JSON.parse(body || "{}"));
+        if (!parsed.success) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Invalid request", details: parsed.error.flatten() }));
+          return;
+        }
+        const { status, latencyAfter } = parsed.data;
 
         // Load existing record to compute delta
         const deployments = await loadDeployments(projectDir, 200);

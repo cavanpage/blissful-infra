@@ -3,7 +3,7 @@ title: Getting Started
 description: Install blissful-infra and create your first full-stack app in under a minute.
 ---
 
-blissful-infra is a CLI that scaffolds and runs production-grade full-stack applications locally. This guide walks you from installation to a running app with the full observability and CI/CD stack active.
+blissful-infra is a CLI that gives you a production-grade sandbox on your laptop. In under two minutes you have a running full-stack app — backend, frontend, database, message bus, tracing, metrics, CI/CD, and a web dashboard — wired together and managed as a unit. Experiment freely. Tear it down. Start fresh. It's all local, isolated, and completely under your control.
 
 ## Prerequisites
 
@@ -131,16 +131,18 @@ blissful-infra dev
 blissful-infra dashboard
 ```
 
+`down` and `up` are cheap — the stack is fully containerized, so stopping and restarting costs nothing. You can tear down a project mid-experiment and bring it back exactly where it was.
+
 ## Reproducing environments
 
-Every project has a `blissful-infra.yaml` that captures the full configuration. To reproduce the exact same environment on another machine:
+Every project has a `blissful-infra.yaml` that captures the full configuration. To reproduce the exact same sandbox on another machine:
 
 ```bash
 git clone git@github.com:your-org/my-app.git
 cd my-app && blissful-infra up
 ```
 
-This reads `blissful-infra.yaml`, regenerates `docker-compose.yaml`, and starts the stack — identical to what was originally created.
+This reads `blissful-infra.yaml`, regenerates `docker-compose.yaml`, and starts the stack — byte-for-byte identical to what was originally created. Share it with a teammate and they get the same environment, no setup guide required.
 
 ## Next steps
 
