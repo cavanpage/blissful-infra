@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install blissful-infra and run a full-stack app locally in under 90 seconds — Spring Boot, React, Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and an AI agent, all wired together with one command.
+description: Install blissful-infra and run a full-stack app locally with one command — Spring Boot, React, Kafka, Postgres, Prometheus, Grafana, Jenkins CI/CD, and an AI agent, all wired together.
 ---
 
 blissful-infra is a CLI that gives you a production-grade sandbox on your laptop. In under two minutes you have a running full-stack app — backend, frontend, database, message bus, tracing, metrics, CI/CD, and a web dashboard — wired together and managed as a unit. Experiment freely. Tear it down. Start fresh. It's all local, isolated, and completely under your control.
@@ -41,7 +41,7 @@ This single command:
 6. Registers the project with Jenkins
 7. Opens the frontend (`http://localhost:3000`) and dashboard (`http://localhost:3002`) in your browser
 
-Total time from command to browser open: **45–90 seconds** on a fast internet connection (images are pulled once and cached).
+Images are pulled on first run and cached — subsequent starts are significantly faster.
 
 ## What gets created
 

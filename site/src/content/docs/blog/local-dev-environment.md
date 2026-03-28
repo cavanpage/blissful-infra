@@ -28,7 +28,7 @@ npm install -g @blissful-infra/cli
 blissful-infra start my-app
 ```
 
-That's it. In under 90 seconds you have all of the above running locally, wired together, and accessible in your browser. No cloud account. No YAML to write. No DevOps knowledge required.
+That's it. You have all of the above running locally, wired together, and accessible in your browser. No cloud account. No YAML to write. No DevOps knowledge required.
 
 Here's what gets created:
 
