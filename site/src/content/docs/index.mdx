@@ -69,13 +69,14 @@ blissful-infra runs entirely on your laptop. Docker Desktop is the only external
 
 Spin up a project, experiment with the architecture, blow it away, and start fresh. The entire stack is isolated, reproducible, and disposable on demand. Everything that would normally require a DevOps team — service discovery, observability wiring, CI/CD pipelines, database migrations — is handled for you, and it all runs offline.
 
-## Coming soon: Blissful Infra Cloud
+## Coming soon: Deploy to the cloud
 
-The local stack you build with is the same stack that runs in production. Blissful Infra Cloud will take your project and deploy it to real AWS infrastructure — ECS Fargate, RDS, MSK, and a managed observability layer — with one command and no Terraform required.
+Cloud deployment is in active development. The goal is simple: the same app you prototype locally ships to real infrastructure with one command — no Terraform, no DevOps team required.
 
-- Automatic deploys from your existing templates
-- Managed dev, staging, and production environments
-- Custom domains, SSL, and automated backups included
-- The same dashboard you use locally, connected to your cloud stack
+The rollout starts with the most accessible platforms and expands from there:
 
-Early access is planned. If you are interested, open an issue on GitHub or watch the repo for updates.
+- **Cloudflare Workers + Pages** — edge deploy with D1, KV, and Queues as the backing services *(shipping first)*
+- **Vercel** — frontend on Vercel, serverless functions, Vercel Postgres
+- **AWS** — ECS Fargate, RDS, SQS for teams that need the full cloud stack
+
+Each platform maps your local modules to its native equivalents automatically. Watch the repo or open an issue to follow along.
