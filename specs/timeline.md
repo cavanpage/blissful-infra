@@ -18,6 +18,8 @@ Ship a working "steel thread" MVP as fast as possible. Each phase should produce
 | **Phase 6** | Cloud Hosting | $5 hosted tier — Cloudflare deploy, billing, dashboard | ⏳ Next |
 | **Phase 6.5** | Test Coverage | Vitest suite: schemas, utils, API contract, template smoke | ⏳ Next |
 | **Phase 7** | Agentic Workflows | Monitor agent → Feature agent → Test agent → Research agent | ⏳ Planned |
+| **Phase 8** | Observability++ | Metric regression tracking, domain attribution, pluggable APM backends (Wavefront, Datadog) | ⏳ Planned |
+| **Phase 9** | Security | Penetration testing framework — OWASP coverage, automated scanning, security CI gate | ⏳ Planned |
 
 ---
 
@@ -90,6 +92,14 @@ These are the concrete next tasks in priority order. Each has a home in an upcom
 - [ ] Vitest test that scaffolds `spring-boot`, runs `docker compose build`, hits `/actuator/health`
 - [ ] Proves the smoke test pattern before adding other templates
 - [ ] Add to nightly CI matrix
+
+### 6. Penetration testing framework (Phase 8 start)
+- [ ] OWASP Top 10 coverage across the API server and scaffolded app templates
+- [ ] Automated scanning with OWASP ZAP as a Docker service in the local stack
+- [ ] Security CI gate — fail pipeline on high/critical findings
+- [ ] `blissful-infra security scan` command to run ZAP against the running stack
+- [ ] Report output to dashboard and deployment tracking record
+- [ ] See [specs/penetration-testing.md](./penetration-testing.md) for full spec (to be written)
 
 ---
 

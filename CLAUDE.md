@@ -71,6 +71,7 @@ cd site && npm run dev    # Astro dev server
 | Cloud hosting / `blissful-infra deploy` / $5 tier | [specs/cloud-hosting.md](specs/cloud-hosting.md) |
 | Cloud deploy Cloudflare architecture | [specs/cloud-deploy.md](specs/cloud-deploy.md) |
 | Agentic workflows (Feature, Template, Test, Monitor agents) | [specs/agentic-workflows.md](specs/agentic-workflows.md) |
+| Observability, metric regression tracking, pluggable APM backends | [specs/observability.md](specs/observability.md) |
 | Test strategy (Vitest, integration, smoke tests) | [specs/testing-strategy.md](specs/testing-strategy.md) |
 | Phase timeline and prioritization | [specs/timeline.md](specs/timeline.md) |
 | Product vision and positioning | [specs/product.md](specs/product.md) |
@@ -90,6 +91,17 @@ cd site && npm run dev    # Astro dev server
 
 ---
 
+## Preferences
+
+- **Self-documenting code** — write code that reads clearly without comments. Only add a comment when the logic is genuinely non-obvious and cannot be made clearer by renaming or restructuring.
+- **Error handling** — use typed exceptions (custom exception classes) rather than throwing generic `Error`. Catch at boundaries, not throughout.
+- **Commits and PRs** — semantic commit messages (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`). PR titles follow the same convention.
+- **Naming** — camelCase for variables and functions throughout. Match whatever convention the surrounding file uses for everything else.
+- **Unit tests** — preferred style is unit tests with mocks. Test one thing at a time, mock all dependencies.
+- **Test plans** — for any non-trivial feature, produce a test plan covering: functional, integration, benchmarking, performance, FMEA (failure mode and effects analysis) and penetration testing. FMEA should identify failure modes, their causes, effects and mitigations. Penetration testing should cover relevant OWASP top 10 attack surfaces.
+
+---
+
 ## Shared conventions
 
 - **Language:** TypeScript throughout (`"type": "module"` ESM everywhere). No CommonJS.
@@ -98,6 +110,7 @@ cd site && npm run dev    # Astro dev server
 - **No backwards-compat shims** — delete unused code rather than commenting it out.
 - **Formatting:** No formatter configured. Match surrounding style.
 - **Secrets:** Never commit `.env` files or API keys. The CLI reads `ANTHROPIC_API_KEY` from the user's environment.
+- **Diagrams:** Use Mermaid.js for all diagrams in specs and documentation.
 
 ---
 
